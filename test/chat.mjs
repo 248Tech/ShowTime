@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { deriveChannel, randomSalt, seal, open, b64, unb64 } from '../public/chatcrypto.js';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-chat-'));
-const PORT = +process.env.CHAT_TEST_PORT || 18090, B = `http://127.0.0.1:${PORT}`, WIPE = 9000;
+const PORT = +process.env.CHAT_TEST_PORT || 18090, B = `http://127.0.0.1:${PORT}`, WIPE = 20000; // generous: slow CI runners must finish the timed phase inside one window
 const srv = spawn('node', ['server.js'], { env: { ...process.env, PORT, DATA_DIR: path.join(dir, 'data'), IPTV_AUTO: '0', ENCODE_AUTO: '0', CHAT_WIPE_MS: String(WIPE) }, cwd: process.cwd() });
 let log = ''; srv.stdout.on('data', (d) => (log += d)); srv.stderr.on('data', (d) => (log += d));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -81,7 +81,9 @@ try {
 
   // late joiner gets the encrypted backlog and can read it
   const evL = await sse(Bo.cookie(), '/api/chat/events'); const hL = await evL.wait('hello');
-  const jl = await (await Bo('POST', '/api/chat/join', { name: '#lobby', cid: hL.cid, verifier: bob.verifier })).json();
+  const jlRes = await Bo('POST', '/api/chat/join', { name: '#lobby', cid: hL.cid, verifier: bob.verifier });
+  const jl = await jlRes.json();
+  assert.equal(jlRes.status, 200, 'late join failed: ' + JSON.stringify(jl) + ' (did the wipe window expire mid-test?)');
   assert.ok(jl.backlog.length >= 1); assert.equal((await open(bob.key, '#lobby', jl.backlog[0].iv, jl.backlog[0].ct)).x, MARK, 'backlog decrypts for someone with the passphrase');
 
   // NOTHING is persisted: scan every byte under the data dir for the plaintext and for the ciphertext
