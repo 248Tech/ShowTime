@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/248Tech/ShowTime/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: Try the live demo
+    url: https://248tech.github.io/ShowTime/demo/
+    about: See how ShowTime behaves before filing a bug.

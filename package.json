@@ -1,0 +1,43 @@
+{
+  "name": "showtime",
+  "version": "0.1.0",
+  "description": "Self-hosted watch-party server: synced rooms, encrypted library, AV1/VP9 smart encoding, friends-only privacy and end-to-end encrypted chat.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "author": "248Tech",
+  "homepage": "https://248tech.github.io/ShowTime/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/248Tech/ShowTime.git"
+  },
+  "bugs": {
+    "url": "https://github.com/248Tech/ShowTime/issues"
+  },
+  "keywords": [
+    "watch-party",
+    "self-hosted",
+    "media-server",
+    "watch-together",
+    "encrypted-chat",
+    "av1",
+    "vp9",
+    "hls",
+    "iptv",
+    "privacy",
+    "nodejs",
+    "sqlite"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/ssrf.mjs && node test/codec.mjs && node test/achievements.mjs && node test/iptv-heal.mjs && node test/smoke.mjs && node test/chat.mjs",
+    "build:site": "node scripts/build-site.mjs",
+    "demo": "node scripts/build-site.mjs --serve"
+  },
+  "dependencies": {
+    "nodemailer": "^6.9.16"
+  }
+}

@@ -1,0 +1,18 @@
+# secrets & runtime data - NEVER commit these
+.env
+.env.*
+!.env.example
+data/
+*.key
+*.pem
+
+# dependencies & build output
+node_modules/
+_site/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log

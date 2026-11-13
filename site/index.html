@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ShowTime - Self-Hosted Private Watch Party Server (Open Source)</title>
+<meta name="description" content="Open-source, self-hosted watch-party server. Watch movies, shows and live TV in sync with friends - encrypted library, AV1/VP9 smart encoding, friends-only privacy and end-to-end encrypted chat. Try the live demo.">
+<meta name="keywords" content="watch party, self-hosted, media server, watch together, synchronized video, encrypted chat, AV1, VP9, HLS, IPTV, open source, Node.js, privacy">
+<meta name="author" content="248Tech">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="theme-color" content="#0b0b10">
+<link rel="canonical" href="{{SITE}}">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="ShowTime">
+<meta property="og:title" content="ShowTime - Watch together. Privately.">
+<meta property="og:description" content="Self-hosted watch parties with an encrypted library, friends-only privacy, AV1/VP9 smart encoding, end-to-end encrypted chat and live TV. Open source. Try the live demo.">
+<meta property="og:url" content="{{SITE}}">
+<meta property="og:image" content="{{SITE}}assets/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ShowTime: a synced watch-party room with a popcorn logo">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ShowTime - Watch together. Privately.">
+<meta name="twitter:description" content="Self-hosted watch parties: encrypted library, friends-only privacy, AV1/VP9 encoding, E2E encrypted chat, live TV. Open source.">
+<meta name="twitter:image" content="{{SITE}}assets/og.png">
+
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="styles.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "{{SITE}}#software",
+      "name": "ShowTime",
+      "alternateName": "ShowTime watch party server",
+      "applicationCategory": "MultimediaApplication",
+      "applicationSubCategory": "Self-hosted media server",
+      "operatingSystem": "Windows, macOS, Linux",
+      "softwareVersion": "{{VERSION}}",
+      "description": "Open-source, self-hosted watch-party server with an encrypted media library, synchronized rooms, AV1/VP9/H.264 smart encoding, friends-only privacy, end-to-end encrypted ephemeral chat and a live TV directory.",
+      "url": "{{SITE}}",
+      "image": "{{SITE}}assets/og.png",
+      "screenshot": "{{SITE}}assets/screens/room.jpg",
+      "downloadUrl": "{{REPO}}/releases/latest",
+      "codeRepository": "{{REPO}}",
+      "license": "https://opensource.org/licenses/MIT",
+      "isAccessibleForFree": true,
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+      "author": { "@type": "Organization", "name": "248Tech", "url": "https://github.com/248Tech" },
+      "featureList": [
+        "Synchronized watch parties with host-controlled permissions",
+        "AES-256-GCM encrypted-at-rest media library",
+        "Automatic AV1 / VP9 / H.264 codec scan and per-viewer switching",
+        "Friends-only privacy: nobody is visible without exchanging friend codes",
+        "End-to-end encrypted, RAM-only chat that wipes every 48 hours",
+        "Live TV directory with health checks and a hardened HLS proxy",
+        "Subtitles, profiles, watch-time stats and achievement badges"
+      ]
+    },
+    {
+      "@type": "WebSite",
+      "@id": "{{SITE}}#website",
+      "url": "{{SITE}}",
+      "name": "ShowTime",
+      "inLanguage": "en"
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Is ShowTime free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. ShowTime is free, open-source software released under the MIT license. You host it yourself on your own computer or server." } },
+        { "@type": "Question", "name": "Does ShowTime include movies or TV channels?", "acceptedAnswer": { "@type": "Answer", "text": "No. You bring your own media. The Live TV page imports the community iptv-org index of publicly available channels, and you are responsible for what you watch and share. ShowTime has no public links and a compliance hook for future copyright tooling." } },
+        { "@type": "Question", "name": "Can friends outside my network join?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. Expose ShowTime over HTTPS with a tunnel such as Tailscale Funnel or Cloudflare Tunnel, or a reverse proxy, then send invite links. Signup is invite-only by default." } },
+        { "@type": "Question", "name": "Is the chat really private?", "acceptedAnswer": { "@type": "Answer", "text": "Messages are end-to-end encrypted in the browser with AES-256-GCM using a key derived from a channel passphrase. The server only holds ciphertext in memory, never on disk, and destroys everything every 48 hours." } },
+        { "@type": "Question", "name": "Does ShowTime support AV1, VP9 and AV2?", "acceptedAnswer": { "@type": "Answer", "text": "AV1, VP9 and H.264 are supported, with a quick scan that picks the best version and per-viewer switching. AV2 is not yet supported by FFmpeg or browsers, so it is a ready-made slot that activates once they are." } },
+        { "@type": "Question", "name": "What do I need to run it?", "acceptedAnswer": { "@type": "Answer", "text": "Node.js 22.13 or newer and FFmpeg. Clone the repository, run npm install and npm start. There are no frameworks and only one runtime dependency." } }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <nav class="bar" aria-label="Main">
+    <a class="brand" href="./" aria-label="ShowTime home"><img src="favicon.svg" width="34" height="34" alt=""><b>ShowTime</b></a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
+      <a href="#security">Security</a>
+      <a href="#install">Install</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="actions">
+      <a class="btn ghost" href="{{REPO}}" rel="noopener"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0a8 8 0 0 0-2.53 15.59c.4.07.55-.17.55-.38v-1.33c-2.23.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.05-.49.05-.49.8.06 1.23.83 1.23.83.72 1.22 1.87.87 2.33.66.07-.52.28-.87.5-1.07-1.78-.2-3.65-.89-3.65-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 4 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.28.82 2.15 0 3.07-1.88 3.75-3.66 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 0 0 8 0Z"/></svg>GitHub</a>
+      <a class="btn" href="demo/">Live demo</a>
+    </div>
+  </nav>
+</header>
+
+<main id="main">
+  <section class="hero" aria-labelledby="h1">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="dot"></span> Open source &middot; Self-hosted &middot; v{{VERSION}}</p>
+        <h1 id="h1">Watch together.<br><span class="grad">Privately.</span></h1>
+        <p class="lead">ShowTime is a lightweight watch-party server you run yourself. Sync movies, shows and live TV with friends in real time, with an encrypted library, friends-only privacy, smart AV1/VP9 encoding and end-to-end encrypted chat.</p>
+        <div class="cta">
+          <a class="btn lg" href="demo/">&#9654;&nbsp; Try the live demo</a>
+          <a class="btn lg ghost" href="#install">Install in 2 minutes</a>
+        </div>
+        <ul class="pills" aria-label="Project facts">
+          <li>MIT licensed</li><li>Node.js 22.13+</li><li>1 runtime dependency</li><li>6 test suites</li><li>AES-256-GCM</li>
+        </ul>
+      </div>
+      <div class="hero-shot" aria-hidden="false">
+        <div class="glow"></div>
+        <figure class="frame">
+          <div class="chrome"><i></i><i></i><i></i><span>ShowTime &middot; Movie Night</span></div>
+          <img src="assets/screens/room.jpg" width="1440" height="900" alt="ShowTime watch-party room: synced player, queue, host permissions and codec switcher" fetchpriority="high">
+        </figure>
+        <img class="phone" src="assets/screens/mobile.jpg" width="390" height="844" alt="ShowTime on a phone: compact navigation and watch stats" loading="lazy">
+      </div>
+    </div>
+  </section>
+
+  <section class="strip" aria-label="Highlights">
+    <div class="wrap strip-grid">
+      <div><b>0</b><span>frameworks &mdash; plain Node.js + SQLite</span></div>
+      <div><b>3</b><span>codecs: AV1, VP9, H.264</span></div>
+      <div><b>48h</b><span>and the chat destroys itself</span></div>
+      <div><b>30</b><span>badges to earn</span></div>
+    </div>
+  </section>
+
+  <section id="features" class="section" aria-labelledby="features-h">
+    <div class="wrap">
+      <p class="kicker">Features</p>
+      <h2 id="features-h">Everything for movie night, nothing you don't want</h2>
+      <p class="sub">Built for small groups and local networks first, with the privacy and security you'd expect before putting it on the internet.</p>
+      <div class="cards">
+        <article class="card"><div class="ico">&#127871;</div><h3>Synced watch parties</h3><p>Play, pause, seek, queue and skip stay in lockstep for everyone. Hosts decide who may control what, and can stream a file straight from their own computer over WebRTC &mdash; nothing is uploaded.</p></article>
+        <article class="card"><div class="ico">&#128274;</div><h3>Invisible by default</h3><p>No user directory, no search. People connect by swapping private friend codes off-platform. Strangers in a shared room only ever see anonymous aliases. Online status is friends-only.</p></article>
+        <article class="card"><div class="ico">&#128737;</div><h3>Encrypted at rest</h3><p>Uploads, thumbnails, subtitles and profile pictures are stored with chunked AES-256-GCM and a per-file key, so seeking still works. Local library folders are read-only and never modified.</p></article>
+        <article class="card"><div class="ico">&#9889;</div><h3>Smart AV1 / VP9 / H.264</h3><p>A quick scan trial-encodes your file on your machine, then produces only the versions worth having. Every viewer's player picks the best one for its device &mdash; and can switch live without losing its place.</p></article>
+        <article class="card"><div class="ico">&#128172;</div><h3>E2E encrypted chat</h3><p>A mIRC-style chat where the server only sees ciphertext. Keys come from a passphrase, nicknames live inside the encrypted payload, nothing touches disk, and everything is wiped every 48 hours.</p></article>
+        <article class="card"><div class="ico">&#128250;</div><h3>Live TV directory</h3><p>Browse thousands of free, publicly available channels from the community iptv-org index. Streams play through a hardened proxy with health checks, frozen-feed detection and automatic recovery.</p></article>
+        <article class="card"><div class="ico">&#128221;</div><h3>Subtitles that just work</h3><p>Embedded and sidecar tracks are found automatically and stored as encrypted WebVTT. Upload your own, or share subtitles live with your room, peer-to-peer.</p></article>
+        <article class="card"><div class="ico">&#127942;</div><h3>Profiles &amp; badges</h3><p>Track watch time, recently watched and everything you've seen. Earn 30 bronze-to-platinum badges. Your activity is private unless you choose to share it with friends.</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section id="screenshots" class="section alt" aria-labelledby="shots-h">
+    <div class="wrap">
+      <p class="kicker">Screenshots</p>
+      <h2 id="shots-h">A modern, fast interface</h2>
+      <p class="sub">These are captured from the <a href="demo/">live demo</a>, which runs the real front-end in your browser.</p>
+      <div class="shots">
+        <figure><button type="button" data-lightbox="assets/screens/home.jpg" aria-label="Enlarge: Home"><img src="assets/screens/home.jpg" width="1440" height="900" alt="Home page with watch stats, hero banner and recently added titles" loading="lazy"></button><figcaption>Home</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/room.jpg" aria-label="Enlarge: Watch room"><img src="assets/screens/room.jpg" width="1440" height="900" alt="Synced watch room with queue, codec switcher and host permissions" loading="lazy"></button><figcaption>Watch room &amp; host controls</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/codecs.jpg" aria-label="Enlarge: Codec scan report"><img src="assets/screens/codecs.jpg" width="1440" height="900" alt="Codec scan report comparing AV1, VP9 and H.264 trial encodes" loading="lazy"></button><figcaption>Codec scan report</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/chat.jpg" aria-label="Enlarge: Encrypted chat"><img src="assets/screens/chat.jpg" width="1440" height="900" alt="mIRC-style end-to-end encrypted chat with wipe countdown" loading="lazy"></button><figcaption>Encrypted chat</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/livetv.jpg" aria-label="Enlarge: Live TV"><img src="assets/screens/livetv.jpg" width="1440" height="900" alt="Live TV directory with search and category filters" loading="lazy"></button><figcaption>Live TV</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/friends.jpg" aria-label="Enlarge: Friends"><img src="assets/screens/friends.jpg" width="1440" height="900" alt="Friends page with private friend code and anonymous requests" loading="lazy"></button><figcaption>Friend codes &amp; anonymous requests</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/badges.jpg" aria-label="Enlarge: Badges"><img src="assets/screens/badges.jpg" width="1440" height="900" alt="Achievement badges with tiers and progress bars" loading="lazy"></button><figcaption>Achievements</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/stats.jpg" aria-label="Enlarge: Stats"><img src="assets/screens/stats.jpg" width="1440" height="900" alt="Watch-time statistics and friends leaderboard" loading="lazy"></button><figcaption>Watch-time stats</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/groups.jpg" aria-label="Enlarge: Groups"><img src="assets/screens/groups.jpg" width="1440" height="900" alt="Group members with anonymous aliases for non-friends" loading="lazy"></button><figcaption>Aliases for strangers</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="how-h">
+    <div class="wrap">
+      <p class="kicker">How it works</p>
+      <h2 id="how-h">From download to movie night in three steps</h2>
+      <ol class="steps">
+        <li><span>1</span><h3>Run it</h3><p>Clone the repo, <code>npm install</code>, <code>npm start</code>. The first account you register becomes the admin.</p></li>
+        <li><span>2</span><h3>Add media &amp; friends</h3><p>Upload files (encrypted) or point ShowTime at a folder. Swap friend codes, make a group, share a title.</p></li>
+        <li><span>3</span><h3>Start a room</h3><p>Invite people, press play, and everyone watches in sync. Chat is one tab away &mdash; and it forgets everything on schedule.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section id="security" class="section alt" aria-labelledby="sec-h">
+    <div class="wrap two">
+      <div>
+        <p class="kicker">Security</p>
+        <h2 id="sec-h">Designed to be safe on the internet</h2>
+        <p class="sub">ShowTime assumes it will be exposed to people you don't know, so the defaults are strict. Read the full <a href="{{REPO}}/blob/main/SECURITY.md">security policy</a>.</p>
+      </div>
+      <ul class="ticks">
+        <li><b>Accounts:</b> scrypt password hashing, HttpOnly SameSite=Strict sessions, rate-limited login, invite-only signup.</li>
+        <li><b>Web:</b> strict CSP, CSRF protection, no inline script, no <code>innerHTML</code> with data.</li>
+        <li><b>Streaming proxy:</b> SSRF-guarded (private addresses blocked, even after redirects) with signed, expiring links.</li>
+        <li><b>Uploads:</b> signature-checked before ffmpeg runs, with ffmpeg protocol whitelisting.</li>
+        <li><b>Access control:</b> every file request is checked; there are no public share links.</li>
+        <li><b>Chat:</b> end-to-end encrypted, RAM-only, zero-filled on wipe.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="install" class="section" aria-labelledby="install-h">
+    <div class="wrap">
+      <p class="kicker">Install</p>
+      <h2 id="install-h">Up and running in about two minutes</h2>
+      <p class="sub">Requires <a href="https://nodejs.org/">Node.js 22.13+</a> and <a href="https://ffmpeg.org/download.html">FFmpeg</a> on your PATH.</p>
+      <div class="code" role="group" aria-label="Install commands">
+        <button class="copy" type="button" data-copy="git clone {{REPO}}.git&#10;cd ShowTime&#10;npm install&#10;cp .env.example .env&#10;npm start">Copy</button>
+<pre><code><span class="c"># get it</span>
+git clone {{REPO}}.git
+cd ShowTime
+npm install
+cp .env.example .env     <span class="c"># optional: SMTP, library folders, TLS</span>
+npm start                <span class="c"># http://127.0.0.1:8080 - first signup becomes admin</span></code></pre>
+      </div>
+      <p class="note">Serving friends over the internet? Put it behind HTTPS (Tailscale Funnel, Cloudflare Tunnel or Caddy) &mdash; see the <a href="{{REPO}}#readme">full install guide</a> for Windows, macOS and Linux, reverse proxies and running it as a service.</p>
+      <div class="cta center">
+        <a class="btn lg" href="{{REPO}}/releases/latest">Download v{{VERSION}}</a>
+        <a class="btn lg ghost" href="{{REPO}}">Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" class="section alt" aria-labelledby="faq-h">
+    <div class="wrap narrow">
+      <p class="kicker">FAQ</p>
+      <h2 id="faq-h">Questions, answered</h2>
+      <details><summary>Is ShowTime free?</summary><p>Yes. It is free, open-source software under the MIT license. You host it yourself on your own computer or server.</p></details>
+      <details><summary>Does it include movies or TV channels?</summary><p>No. You bring your own media. The Live TV page imports the community <a href="https://github.com/iptv-org/iptv">iptv-org</a> index of publicly available channels, and you are responsible for what you watch and share. ShowTime has no public links and includes a compliance hook for future copyright tooling.</p></details>
+      <details><summary>Can friends outside my network join?</summary><p>Yes. Expose it over HTTPS with a tunnel (Tailscale Funnel, Cloudflare Tunnel) or a reverse proxy, then send invite links. Signup is invite-only by default.</p></details>
+      <details><summary>Is the chat really private?</summary><p>Messages are encrypted in your browser with AES-256-GCM using a key derived from a channel passphrase. The server only holds ciphertext in memory, never on disk, and destroys everything every 48 hours. Anyone who knows a channel's passphrase can read it, so share it only with people you trust.</p></details>
+      <details><summary>Does it support AV1, VP9 and AV2?</summary><p>AV1, VP9 and H.264 are supported, with a quick scan that picks the best version and per-viewer switching. AV2 isn't supported by FFmpeg or any browser yet, so it is a ready-made slot that activates when they catch up.</p></details>
+      <details><summary>Which browsers work?</summary><p>Current Chrome, Edge, Firefox and Safari. Streaming a local file to a room (peer-to-peer) needs Chrome, Edge or Firefox on the host's side.</p></details>
+      <details><summary>What's the project status?</summary><p>v{{VERSION}} is the first public release and is considered beta. It is covered by an automated test suite, but expect rough edges. Issues and pull requests are welcome.</p></details>
+    </div>
+  </section>
+
+  <section class="final" aria-labelledby="final-h">
+    <div class="wrap">
+      <h2 id="final-h">Your movie night, your rules.</h2>
+      <p>Open the demo, no install and no sign-up &mdash; or grab the code and host it yourself.</p>
+      <div class="cta center">
+        <a class="btn lg" href="demo/">&#9654;&nbsp; Launch the live demo</a>
+        <a class="btn lg ghost" href="{{REPO}}">View source on GitHub</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <div><a class="brand" href="./"><img src="favicon.svg" width="28" height="28" alt=""><b>ShowTime</b></a><p>Self-hosted watch parties. MIT licensed.</p></div>
+    <nav aria-label="Project links"><a href="{{REPO}}">GitHub</a><a href="{{REPO}}/releases">Releases</a><a href="{{REPO}}/blob/main/CHANGELOG.md">Changelog</a><a href="{{REPO}}/issues">Issues</a><a href="{{REPO}}/blob/main/SECURITY.md">Security</a><a href="{{REPO}}/blob/main/CONTRIBUTING.md">Contributing</a></nav>
+    <p class="fine">ShowTime does not provide, host or endorse any copyrighted content. Use it only with media you have the right to watch and share. Live TV entries come from a third-party community index and are not controlled by this project.</p>
+  </div>
+</footer>
+
+<dialog id="lb" aria-label="Screenshot viewer"><button type="button" class="lb-x" aria-label="Close">&times;</button><img alt=""></dialog>
+<script src="site.js" defer></script>
+</body>
+</html>
