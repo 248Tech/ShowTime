@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>ShowTime - Self-Hosted Private Watch Party Server (Open Source)</title>
-<meta name="description" content="Open-source, self-hosted watch-party server. Watch movies, shows and live TV in sync with friends - encrypted library, AV1/VP9 smart encoding, friends-only privacy and end-to-end encrypted chat. Try the live demo.">
+<meta name="description" content="Open-source, self-hosted watch-party server. Watch movies, shows and live TV in sync with friends - Plex-style library with automatic posters, cast and episode guides, live TV with DVR, free public-domain movies, AV1/VP9 smart encoding, friends-only privacy and end-to-end encrypted chat. Try the live demo.">
 <meta name="keywords" content="watch party, self-hosted, media server, watch together, synchronized video, encrypted chat, AV1, VP9, HLS, IPTV, open source, Node.js, privacy">
 <meta name="author" content="248Tech">
 <meta name="robots" content="index,follow,max-image-preview:large">
@@ -44,7 +44,7 @@
       "applicationSubCategory": "Self-hosted media server",
       "operatingSystem": "Windows, macOS, Linux",
       "softwareVersion": "{{VERSION}}",
-      "description": "Open-source, self-hosted watch-party server with an encrypted media library, synchronized rooms, AV1/VP9/H.264 smart encoding, friends-only privacy, end-to-end encrypted ephemeral chat and a live TV directory.",
+      "description": "Open-source, self-hosted watch-party server with an encrypted media library, synchronized rooms, AV1/VP9/H.264 smart encoding, friends-only privacy, end-to-end encrypted ephemeral chat and a live TV directory with DVR, a Plex-style library with automatic posters, cast and episode guides, free public-domain movies and multi-device playback.",
       "url": "{{SITE}}",
       "image": "{{SITE}}assets/og.png",
       "screenshot": "{{SITE}}assets/screens/room.jpg",
@@ -61,7 +61,11 @@
         "Friends-only privacy: nobody is visible without exchanging friend codes",
         "End-to-end encrypted, RAM-only chat that wipes every 48 hours",
         "Live TV directory with health checks and a hardened HLS proxy",
-        "Subtitles, profiles, watch-time stats and achievement badges"
+        "Subtitles, profiles, watch-time stats and achievement badges",
+        "Automatic posters, cast & crew headshots, ratings and episode guides for uploaded media",
+        "Live TV DVR that records into the encrypted library",
+        "Free public-domain and Creative-Commons movie catalogue",
+        "Cast a room to any other device signed in to your account"
       ]
     },
     {
@@ -118,7 +122,7 @@
           <a class="btn lg ghost" href="#install">Install in 2 minutes</a>
         </div>
         <ul class="pills" aria-label="Project facts">
-          <li>MIT licensed</li><li>Node.js 22.13+</li><li>1 runtime dependency</li><li>6 test suites</li><li>AES-256-GCM</li>
+          <li>MIT licensed</li><li>Node.js 22.13+</li><li>1 runtime dependency</li><li>7 test suites</li><li>AES-256-GCM</li>
         </ul>
       </div>
       <div class="hero-shot" aria-hidden="false">
@@ -155,6 +159,10 @@
         <article class="card"><div class="ico">&#128250;</div><h3>Live TV directory</h3><p>Browse thousands of free, publicly available channels from the community iptv-org index. Streams play through a hardened proxy with health checks, frozen-feed detection and automatic recovery.</p></article>
         <article class="card"><div class="ico">&#128221;</div><h3>Subtitles that just work</h3><p>Embedded and sidecar tracks are found automatically and stored as encrypted WebVTT. Upload your own, or share subtitles live with your room, peer-to-peer.</p></article>
         <article class="card"><div class="ico">&#127942;</div><h3>Profiles &amp; badges</h3><p>Track watch time, recently watched and everything you've seen. Earn 30 bronze-to-platinum badges. Your activity is private unless you choose to share it with friends.</p></article>
+        <article class="card"><div class="ico">&#127910;</div><h3>Plex-style library</h3><p>Upload a file and ShowTime fetches the poster, synopsis, score, cast &amp; crew headshots and the full season and episode guide on its own. Episode names replace &ldquo;Episode 3&rdquo;, TV is grouped into show cards, and every title has a global 1&ndash;5&#9733; rating.</p></article>
+        <article class="card"><div class="ico">&#9210;</div><h3>Live TV DVR</h3><p>Record any channel now or schedule it up to 14 days ahead. It records on the server, so you can close the tab, then saves into your own encrypted library &mdash; private to you.</p></article>
+        <article class="card"><div class="ico">&#127902;</div><h3>Free movies</h3><p>A built-in catalogue of public-domain and Creative-Commons films from the Internet Archive, streamed through your server with working seek. Every title shows its licence.</p></article>
+        <article class="card"><div class="ico">&#128241;</div><h3>Your media, any device</h3><p>Sign in on a phone, TV or laptop and your library plays there. Send a running room to another signed-in device with one tap; your device list is visible to nobody else.</p></article>
       </div>
     </div>
   </section>
@@ -166,6 +174,7 @@
       <p class="sub">These are captured from the <a href="demo/">live demo</a>, which runs the real front-end in your browser.</p>
       <div class="shots">
         <figure><button type="button" data-lightbox="assets/screens/home.jpg" aria-label="Enlarge: Home"><img src="assets/screens/home.jpg" width="1440" height="900" alt="Home page with watch stats, hero banner and recently added titles" loading="lazy"></button><figcaption>Home</figcaption></figure>
+        <figure><button type="button" data-lightbox="assets/screens/details.jpg" aria-label="Enlarge: Show details"><img src="assets/screens/details.jpg" width="1440" height="900" alt="Show details with poster, synopsis, cast and crew headshots and an episode guide" loading="lazy"></button><figcaption>Plex-style details: poster, cast &amp; episode guide</figcaption></figure>
         <figure><button type="button" data-lightbox="assets/screens/room.jpg" aria-label="Enlarge: Watch room"><img src="assets/screens/room.jpg" width="1440" height="900" alt="Synced watch room with queue, codec switcher and host permissions" loading="lazy"></button><figcaption>Watch room &amp; host controls</figcaption></figure>
         <figure><button type="button" data-lightbox="assets/screens/codecs.jpg" aria-label="Enlarge: Codec scan report"><img src="assets/screens/codecs.jpg" width="1440" height="900" alt="Codec scan report comparing AV1, VP9 and H.264 trial encodes" loading="lazy"></button><figcaption>Codec scan report</figcaption></figure>
         <figure><button type="button" data-lightbox="assets/screens/chat.jpg" aria-label="Enlarge: Encrypted chat"><img src="assets/screens/chat.jpg" width="1440" height="900" alt="mIRC-style end-to-end encrypted chat with wipe countdown" loading="lazy"></button><figcaption>Encrypted chat</figcaption></figure>
@@ -235,7 +244,8 @@ npm start                <span class="c"># http://127.0.0.1:8080 - first signup 
       <p class="kicker">FAQ</p>
       <h2 id="faq-h">Questions, answered</h2>
       <details><summary>Is ShowTime free?</summary><p>Yes. It is free, open-source software under the MIT license. You host it yourself on your own computer or server.</p></details>
-      <details><summary>Does it include movies or TV channels?</summary><p>No. You bring your own media. The Live TV page imports the community <a href="https://github.com/iptv-org/iptv">iptv-org</a> index of publicly available channels, and you are responsible for what you watch and share. ShowTime has no public links and includes a compliance hook for future copyright tooling.</p></details>
+      <details><summary>Does it include movies or TV channels?</summary><p>No. You bring your own media. The Free Movies tab lists only films the Internet Archive tags as public-domain or Creative-Commons, and shows each licence. The Live TV page imports the community <a href="https://github.com/iptv-org/iptv">iptv-org</a> index of publicly available channels, and you are responsible for what you watch and share. ShowTime has no public links and includes a compliance hook for future copyright tooling.</p></details>
+      <details><summary>What leaves my server for posters and cast photos?</summary><p>Only the title (and year) of a show or movie, sent to TVMaze, the iTunes Search API or TMDB (if you add a free key). Images are fetched and cached by your server through a host-allow-listed proxy, so browsers never contact third parties. Admins can switch lookups off entirely.</p></details>
       <details><summary>Can friends outside my network join?</summary><p>Yes. Expose it over HTTPS with a tunnel (Tailscale Funnel, Cloudflare Tunnel) or a reverse proxy, then send invite links. Signup is invite-only by default.</p></details>
       <details><summary>Is the chat really private?</summary><p>Messages are encrypted in your browser with AES-256-GCM using a key derived from a channel passphrase. The server only holds ciphertext in memory, never on disk, and destroys everything every 48 hours. Anyone who knows a channel's passphrase can read it, so share it only with people you trust.</p></details>
       <details><summary>Does it support AV1, VP9 and AV2?</summary><p>AV1, VP9 and H.264 are supported, with a quick scan that picks the best version and per-viewer switching. AV2 isn't supported by FFmpeg or any browser yet, so it is a ready-made slot that activates when they catch up.</p></details>
