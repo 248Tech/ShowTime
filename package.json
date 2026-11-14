@@ -38,6 +38,6 @@
     "demo": "node scripts/build-site.mjs --serve"
   },
   "dependencies": {
-    "nodemailer": "^6.9.16"
+    "nodemailer": "^10.5.0"
   }
 }
