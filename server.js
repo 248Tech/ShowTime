@@ -18,6 +18,10 @@ import { HttpError, attach, command, signal, closeRoom, roomSnapshot, inRoom, cu
 import * as iptv from './lib/iptv.js';
 import * as stats from './lib/stats.js';
 import * as presence from './lib/presence.js';
+import * as meta from './lib/meta.js';
+import * as ratings from './lib/ratings.js';
+import * as dvr from './lib/dvr.js';
+import * as free from './lib/free.js';
 import * as M from './lib/media.js';
 import { beforeIngest } from './lib/compliance.js';
 
@@ -72,13 +76,14 @@ setInterval(() => { run('DELETE FROM sessions WHERE expires_at<?', now()); run('
 
 const pubUser = (u) => ({ id: u.id, username: u.username, name: u.name, email: u.email, isAdmin: u.isAdmin, avatar: u.avatarV || null, showOnline: u.showOnline, acceptRequests: u.acceptRequests, shareActivity: u.shareActivity });
 const pubMedia = (m, uid, groupsByMedia, subsByMedia, nm) => ({
-  id: m.id, title: m.title, kind: m.kind, show: m.show, season: m.season, episode: m.episode, year: m.year,
+  id: m.id, rkey: ratings.keyForMedia(m), title: m.title, kind: m.kind, show: m.show, season: m.season, episode: m.episode, year: m.year,
   duration: m.duration, width: m.width, height: m.height, vcodec: m.vcodec, acodec: m.acodec, size: m.size,
   playable: !!m.playable, status: m.status, error: m.error, source: m.src, hasThumb: !!m.thumb_path, createdAt: m.created_at,
   owner: nm(m.owner_id, m.owner_name), owned: m.owner_id === uid, groups: m.owner_id === uid ? groupsByMedia.get(m.id) || [] : undefined,
   progress: M.progress.get(m.id)?.p, encoding: M.progress.get(m.id)?.codec, renditions: M.renditionsOf(m), scan: m.owner_id === uid && m.scan ? JSON.parse(m.scan) : undefined,
-  subs: subsByMedia.get(m.id) || [],
+  subs: subsByMedia.get(m.id) || [], ...posterOf(m),
 });
+const posterOf = (m) => { const p = m.kind === 'tv' ? meta.peek('tv', m.show) : m.kind === 'movie' ? meta.peek('movie', m.title, m.year) : null; return p ? { poster: p.poster, score: p.score } : {}; };
 
 function ownedMedia(user, id) {
   const m = get('SELECT * FROM media WHERE id=?', id);
@@ -202,6 +207,7 @@ route('GET', '/api/admin/info', ADMIN, async ({ res }) => {
     mediaDirs: config.mediaDirs, ffmpeg: await M.ffmpegAvailable(), mailEnabled: sec.mailEnabled, openSignup: setting('open_signup') === '1',
     encode: { auto: setting('encode_auto', config.encodeAuto ? '1' : '0') === '1', budgetX: config.encodeBudgetX, codecs: await encode.codecCapabilities() },
     invites: all('SELECT expires_at,used_by FROM invites ORDER BY expires_at DESC LIMIT 20'),
+    meta: { enabled: meta.enabled(), tmdb: meta.hasTmdb() }, free: { total: get('SELECT COUNT(*) n FROM free').n }, dvr: { active: dvr.activeCount() },
   });
 });
 route('POST', '/api/admin/invites', ADMIN, async ({ res, user }) => {
@@ -213,6 +219,8 @@ route('POST', '/api/admin/invites', ADMIN, async ({ res, user }) => {
 route('POST', '/api/admin/settings', ADMIN, async ({ res, body }) => {
   if ('openSignup' in body) setSetting('open_signup', body.openSignup ? '1' : '0');
   if ('encodeAuto' in body) setSetting('encode_auto', body.encodeAuto ? '1' : '0');
+  if ('metaEnabled' in body) setSetting('meta_enabled', body.metaEnabled ? '1' : '0');
+  if ('tmdbKey' in body) setSetting('tmdb_key', str(body.tmdbKey, 80).replace(/[^A-Za-z0-9]/g, ''));
   json(res, 200, { ok: true });
 });
 route('DELETE', '/api/admin/users/:id', ADMIN, async ({ res, user, params }) => {
@@ -557,7 +565,52 @@ route('GET', '/api/avatars/:id', AUTH, async ({ req, res, user, params }) => {
 });
 
 // --- online presence + room invites ---
-route('GET', '/api/events', AUTH, async ({ req, res, user }) => presence.attach(user, req, res));
+route('GET', '/api/events', AUTH, async ({ req, res, user, url }) => {
+  const id = str(url.searchParams.get('d'), 32), name = str(url.searchParams.get('n'), 40).replace(/[ -<>]/g, '');
+  presence.attach(user, req, res, /^[a-z0-9]{6,32}$/.test(id) ? { id, name: name || 'Device' } : null);
+});
+
+// --- my devices: send what you're watching to another device signed in to YOUR account ---
+route('GET', '/api/devices', AUTH, async ({ res, user }) => json(res, 200, presence.devicesOf(user.id)));
+route('POST', '/api/devices/:id/cast', AUTH, async ({ res, user, params, body }) => {
+  const room = roomFor(user, str(body.roomId, 64));
+  need(!sec.limited('cast:' + user.id, 30, 60000), 429, 'Slow down');
+  sec.hit('cast:' + user.id, 60000);
+  need(presence.cast(user.id, params.id, { roomId: room.id, roomName: room.name, from: str(body.from, 40) || 'another device' }), 404, 'That device is no longer online');
+  json(res, 200, { ok: true });
+});
+
+// --- cast & crew, global ratings ---
+route('GET', '/api/meta', AUTH, async ({ res, user, url }) => {
+  need(!sec.limited('meta:' + user.id, 120, 60000), 429, 'Slow down');
+  sec.hit('meta:' + user.id, 60000);
+  json(res, 200, await meta.lookup(str(url.searchParams.get('kind'), 8), str(url.searchParams.get('title'), 120), +url.searchParams.get('year') || null));
+});
+route('GET', '/api/img', AUTH, async ({ res, url }) => meta.serveImage(res, str(url.searchParams.get('u'), 600)));
+route('GET', '/api/ratings', AUTH, async ({ res, user }) => json(res, 200, ratings.summary(user.id)));
+route('PUT', '/api/ratings', AUTH, async ({ req, res, user }) => {
+  need(!sec.limited('rate:' + user.id, 120, 60000), 429, 'Slow down');
+  sec.hit('rate:' + user.id, 60000);
+  const body = await readJson(req, 2000);
+  const r = ratings.rate(user.id, str(body.key, 160), body.stars);
+  need(r, 400, 'Bad rating');
+  json(res, 200, r);
+});
+
+// --- DVR (record live TV into your own library) ---
+route('GET', '/api/dvr', AUTH, async ({ res, user }) => json(res, 200, dvr.list(user.id)));
+route('POST', '/api/dvr', AUTH, async ({ res, user, body }) => json(res, 201, dvr.create(user.id, body)));
+route('POST', '/api/dvr/:id/stop', AUTH, async ({ res, user, params }) => json(res, 200, dvr.stop(user.id, params.id)));
+route('DELETE', '/api/dvr/:id', AUTH, async ({ res, user, params }) => { dvr.remove(user.id, params.id); json(res, 200, { ok: true }); });
+
+// --- free movies (public-domain / Creative Commons, Internet Archive) ---
+route('GET', '/api/free', AUTH, async ({ res, url }) => json(res, 200, free.list({ q: str(url.searchParams.get('q'), 100), page: Math.max(1, +url.searchParams.get('page') || 1) })));
+route(['GET', 'HEAD'], '/api/free/:id/stream', AUTH, async ({ req, res, params }) => {
+  need(free.exists(params.id), 404, 'Movie not found');
+  if (req.method === 'HEAD') { res.writeHead(200, { 'Content-Type': 'video/mp4', 'Accept-Ranges': 'bytes' }); return res.end(); }
+  await free.stream(req, res, params.id);
+});
+route('POST', '/api/admin/free/refresh', ADMIN, async ({ res, user }) => { audit(user.id, 'free-refresh'); free.refresh(); json(res, 202, { ok: true }); });
 
 route('GET', '/api/rooms/:id/invitees', AUTH, async ({ res, user, params }) => {
   const r = roomFor(user, params.id);
@@ -690,9 +743,31 @@ async function handler(req, res) {
 const server = config.tls ? https.createServer(config.tls, handler) : http.createServer(handler);
 server.requestTimeout = 0; // long uploads / streams
 server.headersTimeout = 30000;
-M.setReadyHook(encode.queueAuto);
+// Plex-style auto-metadata: as soon as an upload is probed, fetch poster / cast / episode info in the background (title only leaves the server).
+async function warmMeta(id) {
+  const m = get('SELECT kind,show,title,year FROM media WHERE id=?', id);
+  if (!m || !meta.enabled()) return;
+  if (m.kind === 'tv' && m.show && m.show !== 'Unknown Show') {
+    const j = await meta.lookup('tv', m.show);
+    if (!j.found) return;
+    for (const e of j.episodes || []) run(`UPDATE media SET title=? WHERE kind='tv' AND show=? AND season=? AND episode=? AND title LIKE 'Episode %'`, e.name, m.show, e.s, e.n);
+  } else if (m.kind === 'movie') await meta.lookup('movie', m.title, m.year);
+}
+M.setReadyHook((id, ...rest) => { warmMeta(id).catch(() => {}); return encode.queueAuto(id, ...rest); });
+setTimeout(async () => { // existing library: fill in whatever is missing, politely
+  try {
+    const seen = new Set();
+    for (const m of all(`SELECT id,kind,show,title,year FROM media WHERE status='ready' AND kind IN ('tv','movie')`)) {
+      const k = m.kind === 'tv' ? 'tv:' + m.show : `movie:${m.title}:${m.year}`;
+      if (seen.has(k)) continue; seen.add(k);
+      await warmMeta(m.id).catch(() => {}); await new Promise((r) => setTimeout(r, 800));
+    }
+  } catch { /* best effort */ }
+}, 8000).unref();
 encode.startEncodeJobs();
 iptv.startIptvJobs();
+free.startFreeJobs();
+dvr.startDvrJobs().catch((e) => console.error('[dvr] failed to start:', e.message));
 server.listen(config.port, config.host, () => {
   console.log(`ShowTime listening on ${config.tls ? 'https' : 'http'}://${config.host}:${config.port}`);
   if (!config.tls && config.host !== '127.0.0.1') console.log('[warn] plain HTTP on a network: put it behind a TLS reverse proxy (see README) or set TLS_CERT/TLS_KEY');

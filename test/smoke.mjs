@@ -337,6 +337,16 @@ try {
   assert.equal((await C('GET', `/api/iptv/logo/${dead.id}`)).status, 404, 'non-image logo refused');
   assert.equal((await cmdC(room.id, { type: 'addIptv', id: good.id })).status, 200, 'channel can be queued');
   const iq = await j(await C('GET', `/api/rooms/${room.id}`)); assert.equal(iq.state.items.find((i) => i.iptv).title, 'Good Channel');
+  // change channel / previous channel
+  const curTitle = async () => { const q = await j(await C('GET', `/api/rooms/${room.id}`)); return q.state.items[q.state.index]?.title; };
+  const qlen = (await j(await C('GET', `/api/rooms/${room.id}`))).state.items.length;
+  assert.equal((await cmdC(room.id, { type: 'tune', recall: true })).status, 409, 'no previous channel yet');
+  assert.equal((await cmdC(room.id, { type: 'tune', id: 'nope' })).status, 404, 'unknown channel refused');
+  const t0 = await curTitle();
+  assert.equal((await cmdC(room.id, { type: 'tune', id: refCh.id })).status, 200, 'switch to a chosen channel');
+  const t1 = await curTitle(); assert.equal(t1, 'Needs Referrer', 'channel switched in place'); assert.notEqual(t1, t0);
+  assert.equal((await cmdC(room.id, { type: 'tune', recall: true })).status, 200); assert.equal(await curTitle(), t0, 'last-channel button returns to the previous channel');
+  assert.ok([200, 404].includes((await cmdC(room.id, { type: 'tune', dir: -1 })).status), 'channel down is accepted'); assert.equal((await j(await C('GET', `/api/rooms/${room.id}`))).state.items.length, qlen, 'changing channel swaps in place, queue does not grow');
 
   // ---- watch-time tracker ----
   const solo = await j(await A('POST', '/api/rooms', {}));

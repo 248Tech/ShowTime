@@ -63,7 +63,7 @@ let pollT = null;
 
 async function loadMe() { S.info = await api('GET', '/me'); S.user = S.info.user; }
 async function loadData() {
-  [S.media, S.groups, S.rooms] = await Promise.all([api('GET', '/media'), api('GET', '/groups'), api('GET', '/rooms')]);
+  [S.media, S.groups, S.rooms, S.ratings] = await Promise.all([api('GET', '/media'), api('GET', '/groups'), api('GET', '/rooms'), api('GET', '/ratings').catch(() => S.ratings || {})]);
   clearTimeout(pollT);
   if (S.media.some((m) => m.status === 'processing')) pollT = setTimeout(async () => { try { S.media = await api('GET', '/media'); if (/^#\/(library)?$|^#\/?$/.test(location.hash) || location.hash === '#/library') render(); } catch { /* ignore */ } }, 3000);
 }
@@ -75,7 +75,10 @@ let currentRoomId = null;
 
 function connectEvents() {
   if (evSrc) return;
-  evSrc = new EventSource('/api/events');
+  evSrc = new EventSource('/api/events?' + new URLSearchParams({ d: devId(), n: devName() }));
+  evSrc.addEventListener('devices', (e) => { S.devices = JSON.parse(e.data); });
+  evSrc.addEventListener('cast', (e) => castPopup(JSON.parse(e.data)));
+  evSrc.addEventListener('dvr', (e) => { const d = JSON.parse(e.data); if (d.status === 'done') toast('Recording saved to your library'); else if (d.status === 'failed') toast('A recording failed - see Live TV → Recordings'); window.dispatchEvent(new Event('st-dvr')); });
   evSrc.addEventListener('online', (e) => { S.online = JSON.parse(e.data); updateOnlineBadge(); });
   evSrc.addEventListener('invite', (e) => invitePopup(JSON.parse(e.data)));
   evSrc.addEventListener('achievement', (e) => achievementPopup(JSON.parse(e.data)));
@@ -204,6 +207,7 @@ async function render() {
     if (p.startsWith('/profile/')) return profileView(+p.split('/')[2]);
     if (p === '/chat') { cleanup = chat.leaveView; return chat.chatView(); }
     if (p === '/iptv') return iptvView();
+    if (p === '/free') return freeView();
     if (p === '/stats') return statsView();
     if (p.startsWith('/room/')) return roomView(p.split('/')[2]);
     if (p === '/groups') return groupsView();
@@ -219,7 +223,7 @@ function shell(active, ...content) {
   return [
     h('nav', { class: 'top' },
       h('a', { class: 'brand', href: '#/', title: 'ShowTime' }, logoEl(), h('b', null, 'ShowTime')),
-      link('/', 'Home'), link('/library', 'Library'), link('/iptv', 'Live TV'), link('/rooms', 'Rooms'), link('/friends', 'Friends', 'friendsBadge'), link('/groups', 'Groups'), link('/chat', 'Chat', 'chatBadge'), link('/stats', 'Stats'),
+      link('/', 'Home'), link('/library', 'Library'), link('/iptv', 'Live TV'), link('/free', 'Free Movies'), link('/rooms', 'Rooms'), link('/friends', 'Friends', 'friendsBadge'), link('/groups', 'Groups'), link('/chat', 'Chat', 'chatBadge'), link('/stats', 'Stats'),
       S.user.isAdmin && link('/admin', 'Admin'),
       h('span', { class: 'sp' }),
       h('button', { class: 'btn sec sm', id: 'onlineBtn', title: 'Online now', onclick: onlineModal }, h('span', { class: 'dot' }), ` ${S.online.length} online`),
@@ -276,35 +280,59 @@ function authView(p, q) {
 
 // ---------- media cards / grouping ----------
 const thumbEl = (m) => {
-  const p = h('div', { class: 'poster' }, h('div', { class: 'ph' }, (m.show || m.title || '?')[0].toUpperCase()));
-  if (m.hasThumb) { const img = h('img', { src: `/api/media/${m.id}/thumb`, loading: 'lazy', alt: '' }); img.onerror = () => img.remove(); p.prepend(img); }
+  const p = h('div', { class: 'poster' + (m.kind === 'tv' || m.kind === 'movie' ? ' pp' : '') }, h('div', { class: 'ph' }, (m.show || m.title || '?')[0].toUpperCase()));
+  const own = () => { if (m.hasThumb) { const img = h('img', { src: `/api/media/${m.id}/thumb`, loading: 'lazy', alt: '' }); img.onerror = () => img.remove(); p.prepend(img); } };
+  if (m.poster) { const img = h('img', { src: m.poster, loading: 'lazy', alt: '' }); img.onerror = () => { img.remove(); own(); }; p.prepend(img); } else own();
+  if (m.score != null) p.append(h('span', { class: 'score' }, '★ ' + Number(m.score).toFixed(1)));
   return p;
 };
 function mediaCard(m, onclick) {
-  const p = thumbEl(m);
+  const p = thumbEl(m.kind === 'tv' ? { ...m, kind: 'video', poster: null, score: null } : m); // episodes show their own frame; posters are for shows & movies
   if (m.status === 'processing') p.append(h('span', { class: 'badge warn' }, m.progress != null ? `Converting ${Math.round(m.progress * 100)}%` : 'Processing…'));
   else if (m.status === 'error') p.append(h('span', { class: 'badge warn' }, 'Error'));
   else if (m.encoding) p.append(h('span', { class: 'badge warn' }, m.encoding === 'scan' ? 'Scanning codecs…' : `Encoding ${CODEC_LABEL[m.encoding] || m.encoding} ${Math.round((m.progress || 0) * 100)}%`));
   else if (!m.playable) p.append(h('span', { class: 'badge warn' }, 'Needs convert'));
   else if (resLabel(m)) p.append(h('span', { class: 'badge' }, resLabel(m)));
-  return h('div', { class: 'card', onclick: onclick || (() => mediaModal(m.id)) }, p, h('div', { class: 't' }, m.title), h('div', { class: 's' }, subtitle(m)));
+  return h('div', { class: 'card', onclick: onclick || (() => mediaModal(m.id)) }, p, h('div', { class: 't' }, m.title), h('div', { class: 's' }, subtitle(m) + ratingTxt(m.rkey)));
 }
 function showCard(show, eps) {
   const first = eps.find((e) => e.hasThumb) || eps[0];
-  const p = thumbEl({ ...first, show });
+  const p = thumbEl({ ...first, show, poster: eps.find((e) => e.poster)?.poster, score: eps.find((e) => e.score != null)?.score });
   p.append(h('span', { class: 'badge' }, `${eps.length} ep`));
-  return h('div', { class: 'card', onclick: () => showModal(show) }, p, h('div', { class: 't' }, show), h('div', { class: 's' }, `${new Set(eps.map((e) => e.season)).size} season(s)`));
+  return h('div', { class: 'card', onclick: () => showModal(show) }, p, h('div', { class: 't' }, show), h('div', { class: 's' }, `${new Set(eps.map((e) => e.season)).size} season(s)` + ratingTxt(first.rkey)));
 }
 const byShow = (list) => { const g = new Map(); for (const m of list) (g.get(m.show || 'Unknown Show') || g.set(m.show || 'Unknown Show', []).get(m.show || 'Unknown Show')).push(m); return g; };
 const epSort = (a, b) => (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0) || a.title.localeCompare(b.title);
 
 function showModal(show) {
   const eps = S.media.filter((m) => m.kind === 'tv' && (m.show || 'Unknown Show') === show).sort(epSort);
-  modal((close) => h('div', { class: 'mb' }, h('h2', null, show),
+  const seasons = [...new Set(eps.map((e) => e.season ?? 0))];
+  let cur = seasons[0];
+  const info = new Map(); // "s:n" -> episode guide entry from the metadata source
+  const tabs = h('div', { class: 'tabs' }), list = h('div', { class: 'eplist' });
+  const draw = () => {
+    tabs.replaceChildren(...(seasons.length > 1 ? seasons.map((n) => h('button', { class: 'tab' + (n === cur ? ' on' : ''), onclick: () => { cur = n; draw(); } }, n ? 'Season ' + n : 'Specials')) : []));
+    list.replaceChildren(...eps.filter((e) => (e.season ?? 0) === cur).map((e) => {
+      const g = info.get(e.season + ':' + e.episode);
+      const th = h('div', { class: 'epth' });
+      const src = e.hasThumb ? `/api/media/${e.id}/thumb` : g?.img;
+      if (src) { const i = h('img', { src, loading: 'lazy', alt: '' }); i.onerror = () => i.remove(); th.append(i); }
+      th.append(h('span', { class: 'epn' }, e.episode ?? '·'));
+      const ok = e.playable && e.status === 'ready';
+      return h('div', { class: 'ep' }, th,
+        h('div', { class: 'epi' },
+          h('div', { class: 'ept' }, h('b', null, g?.name && /^Episode \d+$/.test(e.title) ? g.name : e.title), h('span', { class: 'muted small' }, [g?.air, fmtDur(e.duration) || (g?.runtime ? g.runtime + ' min' : '')].filter(Boolean).join(' · '))),
+          g?.summary ? h('div', { class: 'eps' }, g.summary) : null),
+        h('div', { class: 'epa' }, h('button', { class: 'btn sm', disabled: !ok, title: 'Play', onclick: guard(async () => { document.querySelector('.modalbg')?.remove(); await playNow([e.id]); }) }, '▶'),
+          h('button', { class: 'btn sec sm', onclick: () => { document.querySelector('.modalbg')?.remove(); mediaModal(e.id); } }, 'Details')));
+    }));
+  };
+  metaP('tv', show).then((m) => { if (m.found) { for (const e of m.episodes || []) info.set(e.s + ':' + e.n, e); draw(); } });
+  draw();
+  modal((close) => h('div', { class: 'mb wide' }, h('h2', null, show), starsEl(eps[0]?.rkey), castSection('tv', show),
     h('div', { class: 'acts' }, h('button', { class: 'btn sm', onclick: guard(async () => { close(); await playNow(eps.filter((e) => e.playable && e.status === 'ready').map((e) => e.id)); }) }, '▶ Play all'),
       h('button', { class: 'btn sec sm', onclick: guard(async () => { await queueTo(eps.filter((e) => e.playable && e.status === 'ready').map((e) => e.id)); }) }, '＋ Queue all')),
-    h('div', { class: 'list' }, eps.map((e) => h('div', null, h('span', { class: 'muted' }, epLabel(e)), h('span', { class: 'g' }, e.title), h('span', { class: 'muted small' }, fmtDur(e.duration)),
-      h('button', { class: 'btn sec sm', onclick: () => { close(); mediaModal(e.id); } }, 'Details'))))));
+    tabs, list));
 }
 
 // ---------- play / queue ----------
@@ -347,7 +375,7 @@ function mediaModal(id) {
       return h('label', { style: false }, cb, ' ', g.name, h('span', { class: 'muted small' }, ` (${g.members.length})`));
     })) : null;
     return [h('div', { class: 'mh' }, thumbEl(m)), h('div', { class: 'mb' }, h('h2', null, m.title), h('div', { class: 'muted' }, subtitle(m)), h('div', { class: 'chips' }, chips.map((c) => h('span', { class: 'chip' }, c))),
-      m.error && h('p', { class: 'err' }, m.error), m.status === 'processing' && h('p', { class: 'muted' }, 'Still processing…'), acts, share, codecSection(m, close), subsSection(m, close))];
+      m.error && h('p', { class: 'err' }, m.error), m.status === 'processing' && h('p', { class: 'muted' }, 'Still processing…'), starsEl(m.rkey), acts, m.kind === 'movie' ? castSection('movie', m.title, m.year) : m.kind === 'tv' ? castSection('tv', m.show || m.title, null, m.season != null && m.episode != null ? { s: m.season, n: m.episode } : null) : null, share, codecSection(m, close), subsSection(m, close))];
   });
 }
 function codecSection(m, close) {
@@ -485,7 +513,8 @@ function libraryView() {
     l = l.filter((m) => ({ all: true, movie: m.kind === 'movie', tv: m.kind === 'tv', video: m.kind === 'video', mine: m.owned, shared: !m.owned })[lib.tab]);
     const sorters = { recent: (a, b) => b.createdAt - a.createdAt, title: (a, b) => (a.show || a.title).localeCompare(b.show || b.title) || epSort(a, b), year: (a, b) => (b.year || 0) - (a.year || 0), length: (a, b) => (b.duration || 0) - (a.duration || 0) };
     l.sort(sorters[lib.sort]);
-    const cards = lib.tab === 'tv' ? [...byShow(l)].map(([s, e]) => showCard(s, e)) : l.map((m) => mediaCard(m));
+    const seen = new Set(); // TV episodes live inside their show card (Plex-style); movies and other videos stay individual
+    const cards = lib.tab === 'tv' ? [...byShow(l)].map(([s, e]) => showCard(s, e)) : l.flatMap((m) => { if (m.kind !== 'tv') return [mediaCard(m)]; const k = m.show || 'Unknown Show'; if (seen.has(k)) return []; seen.add(k); return [showCard(k, l.filter((x) => x.kind === 'tv' && (x.show || 'Unknown Show') === k))]; });
     grid.replaceChildren(...(cards.length ? cards : [h('p', { class: 'muted' }, 'Nothing here yet.')]));
   };
   const tabs = h('div', { class: 'tabs' }, [['all', 'All'], ['movie', 'Movies'], ['tv', 'TV Shows'], ['video', 'Other'], ['mine', 'Mine'], ['shared', 'Shared with me']].map(([k, l]) => h('button', { class: 'tab' + (lib.tab === k ? ' on' : ''), onclick: (e) => { lib.tab = k; tabs.querySelectorAll('.tab').forEach((t) => t.classList.remove('on')); e.target.classList.add('on'); draw(); } }, l)));
@@ -530,6 +559,7 @@ function roomView(id) {
   const queueEl = h('div', { class: 'list q' });
   const whoEl = h('div', { class: 'who' });
   const titleEl = h('h2', null, '');
+  const rateBox = h('div', { class: 'rate' });
   let st = null, offset = 0, loaded = null, ignoreUntil = 0, es = null, roomName = '', myCid = null;
   let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   // --- live ("stream local file", peer-to-peer) state ---
@@ -776,8 +806,10 @@ function roomView(id) {
     const E = H.Events, ET = H.ErrorTypes;
     const hls = (iptvHls = new H({
       enableWorker: false,
-      liveSyncDurationCount: 3, liveMaxLatencyDurationCount: 8, // stay close to live, jump forward if we fall too far behind
-      maxBufferLength: 30, maxMaxBufferLength: 60, backBufferLength: 45, // bounded memory so very long sessions don't exhaust the buffer
+      // Smoothness over latency: everyone in a room is synced to live anyway, so sit further back from the live edge and keep a deep buffer.
+      liveSyncDurationCount: 6, liveMaxLatencyDurationCount: 16, // ~6 segments of cushion; only jump forward if we fall really far behind
+      maxBufferLength: 60, maxMaxBufferLength: 120, backBufferLength: 30, maxBufferSize: 80 * 1000 * 1000, // bounded memory so very long sessions don't exhaust the buffer
+      startFragPrefetch: true, abrBandWidthFactor: 0.8, abrBandWidthUpFactor: 0.6, abrEwmaDefaultEstimate: 2e6, // fetch ahead, switch quality down eagerly and up cautiously (no flapping)
       maxBufferHole: 0.6, nudgeMaxRetry: 8, // skip over small gaps / discontinuities (ad breaks)
       manifestLoadingMaxRetry: 6, levelLoadingMaxRetry: 8, fragLoadingMaxRetry: 8, manifestLoadingRetryDelay: 1000, levelLoadingRetryDelay: 1000, fragLoadingRetryDelay: 800, fragLoadingMaxRetryTimeout: 8000,
     }));
@@ -903,6 +935,8 @@ function roomView(id) {
       h('button', { class: 'btn sec sm', title: 'Move up', disabled: !can('queue'), onclick: () => i > 0 && cmd('move', { from: i, to: i - 1 }) }, '↑'),
       h('button', { class: 'btn sec sm', title: 'Move down', disabled: !can('queue'), onclick: () => i < st.items.length - 1 && cmd('move', { from: i, to: i + 1 }) }, '↓'),
       h('button', { class: 'btn sec sm', title: 'Remove', disabled: !can('queue'), onclick: () => cmd('remove', { index: i }) }, '✕'))) : [h('p', { class: 'muted' }, 'Queue is empty.')]));
+    chanCtl.hidden = !it?.iptv;
+    if ((rateBox.dataset.k || '') !== (it?.rkey || '')) { rateBox.dataset.k = it?.rkey || ''; rateBox.replaceChildren(...(it?.rkey ? [starsEl(it.rkey)] : [])); }
     refreshPerms();
     queueEl.querySelectorAll('.g').forEach((g) => (g.style.cursor = 'pointer'));
     if (!it) {
@@ -923,6 +957,12 @@ function roomView(id) {
     if (it.iptv) {
       setNote(null); video.classList.add('noseek');
       if (loaded !== it.id) { loaded = it.id; stopHosting(); stopViewing(); hostSub = null; setTracks([]); startHls(it.id.slice(5)); } else applyPlay();
+      return;
+    }
+    // free movie relayed from the Internet Archive (seekable like a normal file)
+    if (it.free) {
+      setNote(null);
+      if (loaded !== it.id) { loaded = it.id; stopHosting(); stopViewing(); destroyHls(); hostSub = null; ignore(3000); setTracks([]); rendId = null; tried.clear(); video.src = it.src; onceMeta(it, undefined); video.load(); updateCodecUI(null); } else applyPlay();
       return;
     }
     // my own live item whose file handle is gone (page was reloaded)
@@ -1021,25 +1061,35 @@ function roomView(id) {
     modal(() => h('div', { class: 'mb' }, h('h3', null, 'Add to queue'), q, list));
   };
 
-  const iptvPicker = () => {
+  // channel controls: only visible while a live channel is playing
+  const chBtn = (label, title, fn) => gate(h('button', { class: 'btn sm', title, onclick: fn }, label), 'skip');
+  const chanCtl = h('span', { class: 'chctl', hidden: true },
+    chBtn('⟲ Last', 'Previous channel (jump back to the one you were watching)', () => cmd('tune', { recall: true })),
+    chBtn('CH −', 'Channel down (previous in this category)', () => cmd('tune', { dir: -1 })),
+    chBtn('CH ＋', 'Channel up (next in this category)', () => cmd('tune', { dir: 1 })),
+    chBtn('📺 Channels', 'Browse and switch channel', () => iptvPicker(true)),
+    h('button', { class: 'btn sm', title: 'Record this channel to your library', onclick: () => { const it = cur(); if (it?.iptv) dvrModal({ id: it.id.slice(5), name: it.title }); } }, '⏺ Rec'));
+  const iptvPicker = (tune = false) => {
+    let closeIt = () => {};
     const q = h('input', { placeholder: 'Search live channels…' });
     const list = h('div', { class: 'list' });
     let t = null;
     const draw = async () => {
       try {
         const r = await api('GET', '/iptv?working=1&q=' + encodeURIComponent(q.value));
-        list.replaceChildren(...(r.items.length ? r.items.map((c) => h('div', null, h('span', { class: 'g' }, c.name), h('span', { class: 'muted small' }, c.group.split(';')[0]), h('button', { class: 'btn sm', onclick: () => cmd('addIptv', { id: c.id }).then(() => toast('Added')) }, '＋'))) : [h('p', { class: 'muted' }, 'No verified channels match (admins can refresh/check the list).')]));
+        list.replaceChildren(...(r.items.length ? r.items.map((c) => h('div', null, h('span', { class: 'g' }, c.name), h('span', { class: 'muted small' }, c.group.split(';')[0]), tune ? h('button', { class: 'btn sm', onclick: () => cmd('tune', { id: c.id }).then(() => closeIt()) }, '▶ Watch') : h('button', { class: 'btn sm', onclick: () => cmd('addIptv', { id: c.id }).then(() => toast('Added')) }, '＋'))) : [h('p', { class: 'muted' }, 'No verified channels match (admins can refresh/check the list).')]));
       } catch (e) { toast(e.message); }
     };
     q.oninput = () => { clearTimeout(t); t = setTimeout(draw, 250); };
     draw();
-    modal(() => h('div', { class: 'mb' }, h('h3', null, 'Add a live channel'), q, list));
+    modal((c) => { closeIt = c; return h('div', { class: 'mb' }, h('h3', null, tune ? 'Change channel' : 'Add a live channel'), q, list); });
   };
 
   mount(shell('/rooms', roomEl = h('div', { class: 'room' },
-    h('div', null, titleEl, stage, h('div', { class: 'ctl' },
+    h('div', null, titleEl, rateBox, stage, h('div', { class: 'ctl' },
       gate(h('button', { class: 'btn sec sm', onclick: () => cmd('prev') }, '⏮ Prev'), 'skip'), gate(h('button', { class: 'btn sec sm', onclick: () => cmd('play') }, '▶ Play'), 'playback'), gate(h('button', { class: 'btn sec sm', onclick: () => cmd('pause') }, '⏸ Pause'), 'playback'),
-      gate(h('button', { class: 'btn sec sm', onclick: () => cmd('stop') }, '⏹ Stop'), 'playback'), gate(h('button', { class: 'btn sec sm', onclick: () => cmd('next') }, '⏭ Next'), 'skip'), h('button', { class: 'btn sec sm', title: 'Fullscreen with subtitles', onclick: () => stage.requestFullscreen?.() }, '⛶ Fullscreen'), theaterBtn, fitSel, codecSel, codecChip,
+      chanCtl,
+      gate(h('button', { class: 'btn sec sm', onclick: () => cmd('stop') }, '⏹ Stop'), 'playback'), gate(h('button', { class: 'btn sec sm', onclick: () => cmd('next') }, '⏭ Next'), 'skip'), h('button', { class: 'btn sec sm', title: 'Fullscreen with subtitles', onclick: () => stage.requestFullscreen?.() }, '⛶ Fullscreen'), h('button', { class: 'btn sec sm', title: 'Send this room to another device signed in to your account', onclick: () => sendToDevice(id) }, '📲 Send to device'), theaterBtn, fitSel, codecSel, codecChip,
       permNote),
       liveBar,
       h('div', { class: 'muted small' }, 'Watching now:'), whoEl, permPanel),
@@ -1088,16 +1138,19 @@ async function iptvView() {
   const gsel = h('select', { onchange: (e) => { iptvState.group = e.target.value; load(true); } }, h('option', { value: '' }, 'All categories'), fac.groups.map((g) => h('option', { value: g.name, selected: iptvState.group === g.name }, `${g.name} (${g.count})`)));
   const csel = h('select', { onchange: (e) => { iptvState.country = e.target.value; load(true); } }, h('option', { value: '' }, 'All countries'), fac.countries.map((c) => h('option', { value: c.code, selected: iptvState.country === c.code }, `${c.name} (${c.count})`)));
   const wk = h('input', { type: 'checkbox', checked: iptvState.working, disabled: !fac.working, onchange: (e) => { iptvState.working = e.target.checked; load(true); } });
+  const dvrBox = dvrPanel();
+  cleanup = () => dvrBox.stop();
   load(true);
   mount(shell('/iptv',
     h('div', { class: 'page-h' }, h('h1', null, 'Live TV'), h('span', { class: 'live-pill' }, 'LIVE')),
     h('p', { class: 'muted' }, `Free, publicly available channels from the iptv-org community list. ${fac.working.toLocaleString()} verified working${fac.check?.running ? ` · checking ${fac.check.done}/${fac.check.total}…` : ''}.`),
-    h('div', { class: 'toolbar' }, search, gsel, csel, h('label', { style: false }, wk, ' Working only'), info),
+    dvrBox, h('div', { class: 'toolbar' }, search, gsel, csel, h('label', { style: false }, wk, ' Working only'), info),
     grid, h('p', null, more)));
 }
 function chanModal(c) {
   modal((close) => h('div', { class: 'mb' }, h('h2', null, c.name), h('div', { class: 'chips' }, c.group.split(';').map((g) => h('span', { class: 'chip' }, g)), c.country && h('span', { class: 'chip' }, cc(c.country)), c.ok === 1 ? h('span', { class: 'chip' }, '● verified working') : c.ok === 0 ? h('span', { class: 'chip' }, 'last check failed') : null),
-    h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: guard(async () => { close(); await playIptv(c.id); }) }, '▶ Watch now'), h('button', { class: 'btn sec', onclick: guard(() => queueIptv(c.id)) }, '＋ Add to room queue')),
+    h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: guard(async () => { close(); await playIptv(c.id); }) }, '▶ Watch now'), h('button', { class: 'btn sec', onclick: guard(() => queueIptv(c.id)) }, '＋ Add to room queue'), h('button', { class: 'btn sec', title: 'Record this channel to your library', onclick: () => { close(); dvrModal(c); } }, '⏺ Record')),
+    starsEl('iptv:' + String(c.id).toLowerCase()),
     h('p', { class: 'muted small' }, 'Streams are relayed by this server, so friends in a room all see the same channel in sync. Channel availability is outside our control.')));
 }
 async function playIptv(chanId) {
@@ -1153,6 +1206,11 @@ async function adminView() {
       h('p', { class: 'muted' }, `${a.iptv.total.toLocaleString()} channels · ${a.iptv.working.toLocaleString()} verified working · ${a.iptv.checked.toLocaleString()} checked${a.iptv.check.running ? ` · checking ${a.iptv.check.done}/${a.iptv.check.total}…` : ''}`),
       h('p', { class: 'muted small' }, 'Source: iptv-org community index of publicly available channels (refreshed daily). Streams are fetched through this server; nothing is stored.'),
       h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: guard(async () => { await api('POST', '/admin/iptv/refresh'); toast('Importing the channel list - this runs in the background'); }) }, 'Refresh list'), h('button', { class: 'btn sec', onclick: guard(async () => { await api('POST', '/admin/iptv/check'); toast('Checking every channel - runs in the background, takes a while'); }) }, 'Re-check all streams'))),
+    h('div', { class: 'panel' }, h('h3', null, 'Metadata, free movies & DVR'),
+      h('p', null, h('label', { style: false }, h('input', { type: 'checkbox', checked: a.meta.enabled, onchange: guard(async (e) => api('POST', '/admin/settings', { metaEnabled: e.target.checked })) }), ' Look up cast, crew & summaries (sends only the show/movie title to TVMaze / TMDB; photos are cached and relayed by this server)')),
+      h('div', { class: 'toolbar' }, h('input', { id: 'tmdbk', placeholder: a.meta.tmdb ? 'TMDB key saved ✓ (paste a new one to replace)' : 'Optional free TMDB API key - enables cast photos for movies', autocomplete: 'off' }), h('button', { class: 'btn sec', onclick: guard(async () => { await api('POST', '/admin/settings', { tmdbKey: document.getElementById('tmdbk').value }); toast('Saved'); }) }, 'Save key')),
+      h('p', { class: 'muted small' }, `Free movies: ${a.free.total} in the catalogue (public-domain / Creative-Commons films from the Internet Archive). DVR: ${a.dvr.active} recording now.`),
+      h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: guard(async () => { await api('POST', '/admin/free/refresh'); toast('Fetching the free-movie list - runs in the background'); }) }, 'Refresh free movies'))),
     h('div', { class: 'panel' }, h('h3', null, 'Video codecs (AV1 / VP9 / H.264)'),
       h('p', { class: 'muted small' }, `New uploads get a quick scan: a few seconds are trial-encoded with each codec on this machine to measure real speed and size, then the best worthwhile version is encoded in the background (at most ${a.encode.budgetX}x the video's runtime). Each viewer's player picks the best version for their device.`),
       h('p', null, h('label', { style: false }, h('input', { type: 'checkbox', checked: a.encode.auto, onchange: guard(async (e) => api('POST', '/admin/settings', { encodeAuto: e.target.checked })) }), ' Scan & encode new uploads automatically (uncheck to pause background encoding)')),
@@ -1283,6 +1341,7 @@ function accountView() {
       h('div', null, h('h3', null, S.user.name), h('p', { class: 'muted small' }, `@${S.user.username} · ${S.user.email}`),
         h('p', { class: 'muted small' }, 'Your photo and name are only ever shown to accepted friends. Everyone else sees an anonymous alias.'),
         h('div', { class: 'acts' }, h('button', { class: 'btn sm', onclick: () => avInput.click() }, S.user.avatar ? 'Change picture' : 'Upload picture'), S.user.avatar && h('button', { class: 'btn sec sm', onclick: guard(async () => { await api('DELETE', '/profile/avatar'); render(); }) }, 'Remove'), avInput))),
+    devicesPanel(),
     h('div', { class: 'panel' }, h('h3', null, 'Display name'), h('div', { class: 'toolbar' }, name, h('button', { class: 'btn sec', onclick: guard(async () => { await api('PATCH', '/profile', { name: name.value }); toast('Saved'); render(); }) }, 'Save'))),
     h('div', { class: 'panel' }, h('h3', null, 'Privacy'),
       toggle('Show me as online to my friends', 'showOnline', ' Turn off to appear offline everywhere.'),
@@ -1293,5 +1352,182 @@ function accountView() {
     h('div', { class: 'panel', style: false }, h('h3', null, 'Change password'), h('label', null, 'Current password'), h('input', { id: 'cp', type: 'password', autocomplete: 'current-password' }), h('label', null, 'New password (10+ characters)'), h('input', { id: 'np', type: 'password', autocomplete: 'new-password' }), err,
       h('p', null, h('button', { class: 'btn', onclick: async () => { try { await api('POST', '/password', { current: document.getElementById('cp').value, password: document.getElementById('np').value }); toast('Password changed'); err.textContent = ''; } catch (e) { err.textContent = e.message; } } }, 'Update')))));
 }
+
+S.ratings = {};
+// ---------- global ratings ----------
+const ratingTxt = (key) => { const r = key && S.ratings[key]; return r?.n ? ` · ★ ${r.avg.toFixed(1)}` : ''; };
+/** 1-5 stars. Shows the server-wide average; your own vote is highlighted. Click your own star again to remove it. */
+function starsEl(key) {
+  const wrap = h('span', { class: 'stars' });
+  if (!key) return wrap;
+  const draw = () => {
+    const r = S.ratings[key] || {}, mine = r.mine || 0, shown = mine || Math.round(r.avg || 0);
+    wrap.replaceChildren(
+      ...[1, 2, 3, 4, 5].map((n) => h('button', { class: 'star' + (n <= shown ? ' on' : '') + (mine ? ' mine' : ''), title: mine === n ? 'Click to remove your rating' : `Rate ${n} star${n > 1 ? 's' : ''}`, 'aria-label': `${n} star${n > 1 ? 's' : ''}`,
+        onclick: guard(async () => { const res = await api('PUT', '/ratings', { key, stars: mine === n ? 0 : n }); if (res.n) S.ratings[key] = { avg: res.avg, n: res.n, mine: res.mine }; else delete S.ratings[key]; draw(); }) }, '★')),
+      h('span', { class: 'muted small' }, r.n ? ` ${r.avg.toFixed(1)} · ${r.n} rating${r.n > 1 ? 's' : ''} on this server${mine ? ` (you: ${mine})` : ''}` : ' Not rated yet - be the first'));
+  };
+  draw();
+  return wrap;
+}
+
+// ---------- cast & crew (floating heads) ----------
+function headEl(p) {
+  const ring = h('div', { class: 'hd' });
+  const ph = () => { const f = h('span', { class: 'hd-ph' }, (p.name || '?')[0].toUpperCase()); f.style.setProperty('--hue', hueOf(p.name)); ring.append(f); };
+  if (p.img) { const img = h('img', { src: p.img, alt: '', loading: 'lazy' }); img.onerror = () => { img.remove(); ph(); }; ring.append(img); } else ph();
+  return h('div', { class: 'head', title: p.role ? `${p.name} - ${p.role}` : p.name }, ring, h('div', { class: 'hn' }, p.name), p.role ? h('div', { class: 'hr' }, p.role) : null);
+}
+function metaP(kind, title, year) {
+  const k = kind + '|' + title + '|' + (year || '');
+  S.metaC ||= new Map();
+  if (!S.metaC.has(k)) S.metaC.set(k, api('GET', '/meta?' + new URLSearchParams({ kind, title, ...(year ? { year } : {}) })).then((m) => { if (m.error) S.metaC.delete(k); return m; }).catch(() => { S.metaC.delete(k); return { found: false }; }));
+  return S.metaC.get(k);
+}
+/** Plex-style "about" block: poster + facts + synopsis, then floating cast & crew heads. ep = {s, n} adds that episode's own info on top. */
+function castSection(kind, title, year, ep) {
+  const box = h('div', { class: 'castbox' });
+  if (!title) return box;
+  metaP(kind, title, year).then((m) => {
+    if (!m.found) return;
+    const e = ep && (m.episodes || []).find((x) => x.s === ep.s && x.n === ep.n);
+    const poster = m.poster ? h('div', { class: 'about-poster' }, (() => { const i = h('img', { src: m.poster, alt: '' }); i.onerror = () => i.parentNode?.remove(); return i; })()) : null;
+    box.append(...[
+      h('div', { class: 'about' }, poster, h('div', { class: 'about-i' },
+        e ? h('div', { class: 'epbox' }, h('div', { class: 'ept' }, h('b', null, `S${ep.s} · E${ep.n} — ${e.name}`), h('span', { class: 'muted small' }, [e.air, e.runtime && e.runtime + ' min', e.score != null && '★ ' + e.score].filter(Boolean).join(' · '))), e.summary ? h('p', { class: 'summary' }, e.summary) : null) : null,
+        h('div', { class: 'chips' }, m.year ? h('span', { class: 'chip' }, String(m.year)) : null, m.genres.map((g) => h('span', { class: 'chip' }, g)), m.network ? h('span', { class: 'chip' }, m.network) : null, m.status ? h('span', { class: 'chip' }, m.status) : null, m.score != null ? h('span', { class: 'chip gold' }, `★ ${m.score}`) : null),
+        m.summary ? h('p', { class: 'summary' }, (e ? 'About the show: ' : '') + m.summary) : null)),
+      m.cast.length ? h('h3', null, 'Cast') : null, m.cast.length ? h('div', { class: 'heads' }, m.cast.map(headEl)) : null,
+      m.crew.length ? h('h3', null, 'Crew') : null, m.crew.length ? h('div', { class: 'heads' }, m.crew.map(headEl)) : null,
+      !m.cast.length && kind === 'movie' ? h('p', { class: 'muted small' }, 'Cast photos for movies need a free TMDB key - an admin can add one under Admin → Metadata.') : null,
+      h('p', { class: 'muted small' }, `Details from ${m.source}.`)].filter(Boolean));
+  });
+  return box;
+}
+
+// ---------- free movies (Internet Archive) ----------
+const freeState = { q: '' };
+async function freeView() {
+  const grid = h('div', { class: 'cgrid freegrid' });
+  const info = h('span', { class: 'muted small' });
+  const more = h('button', { class: 'btn sec', hidden: true }, 'Load more');
+  let page = 0, busy = false, seq = 0;
+  const card = (f) => {
+    const p = h('div', { class: 'poster tall' }, h('div', { class: 'ph' }, (f.title || '?')[0].toUpperCase()));
+    const img = h('img', { src: '/api/img?u=' + encodeURIComponent(`https://archive.org/services/img/${f.id}`), loading: 'lazy', alt: '' }); img.onerror = () => img.remove(); p.prepend(img);
+    p.append(h('span', { class: 'badge' }, f.license));
+    return h('div', { class: 'card fcard', onclick: () => freeModal(f) }, p, h('div', { class: 't' }, f.title), h('div', { class: 's' }, (f.year || '') + ratingTxt(f.rkey)));
+  };
+  async function load(reset) {
+    if (busy && !reset) return;
+    const my = ++seq; busy = true;
+    if (reset) { page = 0; grid.replaceChildren(); }
+    page++;
+    try {
+      const r = await api('GET', '/free?' + new URLSearchParams({ q: freeState.q, page }));
+      if (my !== seq) return;
+      grid.append(...r.items.map(card));
+      info.textContent = `${r.total.toLocaleString()} movie${r.total === 1 ? '' : 's'}`;
+      more.hidden = page >= r.pages;
+      if (!r.items.length && page === 1) grid.append(h('p', { class: 'muted' }, freeState.q ? 'No movies match.' : 'The free-movie list is empty - an admin can fetch it from the Admin page (needs internet access to archive.org).'));
+    } catch (e) { toast(e.message); } finally { busy = false; }
+  }
+  more.onclick = () => load(false);
+  let t = null;
+  const search = h('input', { type: 'search', placeholder: 'Search free movies…', value: freeState.q, oninput: (e) => { freeState.q = e.target.value; clearTimeout(t); t = setTimeout(() => load(true), 250); } });
+  load(true);
+  mount(shell('/free',
+    h('div', { class: 'page-h' }, h('h1', null, 'Free Movies'), h('span', { class: 'live-pill free' }, 'FREE')),
+    h('p', { class: 'muted' }, 'Public-domain and Creative-Commons feature films from the Internet Archive, streamed for free (no account needed there). Classics, silent films, noir, sci-fi, B-movies. Nothing is stored on this server.'),
+    h('div', { class: 'toolbar' }, search, info), grid, h('p', null, more)));
+}
+function freeModal(f) {
+  modal((close) => h('div', { class: 'mb' }, h('h2', null, f.title), h('div', { class: 'chips' }, f.year ? h('span', { class: 'chip' }, String(f.year)) : null, h('span', { class: 'chip' }, f.license), h('span', { class: 'chip' }, 'Internet Archive')),
+    starsEl(f.rkey),
+    h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: guard(async () => { close(); await playFree(f.id); }) }, '▶ Watch now'), h('button', { class: 'btn sec', onclick: guard(() => queueFree(f.id)) }, '＋ Add to room queue')),
+    f.descr ? h('p', { class: 'summary' }, f.descr) : null,
+    castSection('movie', f.title, f.year)));
+}
+async function playFree(fid) {
+  const id = await soloRoom();
+  await api('POST', `/rooms/${id}/cmd`, { type: 'clear' });
+  await api('POST', `/rooms/${id}/cmd`, { type: 'addFree', id: fid });
+  go('/room/' + id);
+}
+function queueFree(fid) {
+  if (!S.rooms.length) { toast('Create a room first (Rooms tab) or press Watch now'); return; }
+  const sel = h('select', null, S.rooms.map((r) => h('option', { value: r.id }, r.name + (r.groupId ? '' : ' (solo)'))));
+  modal((c) => h('div', { class: 'mb' }, h('h3', null, 'Add to which room?'), sel, h('p', null, h('button', { class: 'btn', onclick: guard(async () => { await api('POST', `/rooms/${sel.value}/cmd`, { type: 'addFree', id: fid }); toast('Queued'); c(); }) }, 'Add to queue'))));
+}
+
+// ---------- DVR ----------
+const fmtWhen = (ms) => new Date(ms).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+const pad2 = (n) => String(n).padStart(2, '0');
+function dvrModal(chan) {
+  modal((close) => {
+    const mins = h('select', null, [[15, '15 minutes'], [30, '30 minutes'], [60, '1 hour'], [90, '1.5 hours'], [120, '2 hours'], [180, '3 hours'], [240, '4 hours (max)']].map(([v, l]) => h('option', { value: v, selected: v === 60 }, l)));
+    const d = new Date(Date.now() + 3600000); d.setMinutes(0, 0, 0);
+    const when = h('input', { type: 'datetime-local', value: `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:00`, hidden: true });
+    const mode = h('select', { onchange: () => { when.hidden = mode.value === 'now'; } }, h('option', { value: 'now' }, 'Start now'), h('option', { value: 'later' }, 'Schedule for later'));
+    return h('div', { class: 'mb' }, h('h2', null, '⏺ Record ' + chan.name),
+      h('p', { class: 'muted small' }, 'The recording is saved to your own encrypted library, private to you, and shows up under Library when it finishes. It records on the server, so you can close this tab.'),
+      h('label', null, 'Start'), mode, when, h('label', null, 'Length'), mins,
+      h('p', null, h('button', { class: 'btn', onclick: guard(async () => {
+        const startAt = mode.value === 'later' ? new Date(when.value).getTime() : undefined;
+        if (mode.value === 'later' && !Number.isFinite(startAt)) throw new Error('Pick a start time');
+        const r = await api('POST', '/dvr', { chanId: chan.id, minutes: +mins.value, startAt });
+        toast(r.status === 'scheduled' && startAt ? 'Scheduled for ' + fmtWhen(r.startAt) : 'Recording started'); close(); window.dispatchEvent(new Event('st-dvr'));
+      }) }, 'Record')));
+  });
+}
+const DVR_LABEL = { scheduled: 'Scheduled', recording: '● Recording', processing: 'Saving…', done: 'Saved', failed: 'Failed', canceled: 'Canceled' };
+function dvrPanel() {
+  const box = h('div', { class: 'panel dvr', hidden: true });
+  const draw = async () => {
+    let list;
+    try { list = await api('GET', '/dvr'); } catch { return; }
+    box.hidden = !list.length;
+    box.replaceChildren(h('h3', null, '⏺ Recordings'), h('div', { class: 'list' }, list.map((r) => h('div', null,
+      h('span', { class: 'g' }, r.channel, h('span', { class: 'muted small' }, `  ${fmtWhen(r.startAt)} → ${new Date(r.endAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`)),
+      h('span', { class: 'chip dvr-' + r.status, title: r.error || '' }, DVR_LABEL[r.status] || r.status), r.error ? h('span', { class: 'muted small' }, r.error) : null,
+      r.status === 'done' ? h('button', { class: 'btn sm', onclick: () => { const m = S.media.find((x) => x.id === r.mediaId); if (m) mediaModal(m.id); else go('/library'); } }, 'Open') : null,
+      ['scheduled', 'recording'].includes(r.status) ? h('button', { class: 'btn sec sm', onclick: guard(async () => { await api('POST', `/dvr/${r.id}/stop`); draw(); }) }, r.status === 'recording' ? 'Stop & save' : 'Cancel') : null,
+      !['scheduled', 'recording', 'processing'].includes(r.status) ? h('button', { class: 'btn sec sm', title: 'Remove from this list (the saved video stays in your library)', onclick: guard(async () => { await api('DELETE', `/dvr/${r.id}`); draw(); }) }, '✕') : null))));
+  };
+  const on = async () => { await draw(); if (location.hash === '#/iptv') { try { S.media = await api('GET', '/media'); } catch { /* ok */ } } };
+  window.addEventListener('st-dvr', on);
+  const poll = setInterval(draw, 15000);
+  draw();
+  box.stop = () => { window.removeEventListener('st-dvr', on); clearInterval(poll); };
+  return box;
+}
+
+// ---------- my devices: send what you're watching to another signed-in device ----------
+const devId = () => { try { let d = localStorage.getItem('st_dev'); if (!d) { d = Array.from(crypto.getRandomValues(new Uint8Array(10)), (b) => (b % 36).toString(36)).join(''); localStorage.setItem('st_dev', d); } return d; } catch { return (devId.mem ||= Math.random().toString(36).slice(2, 12).padEnd(10, 'x')); } };
+const devGuess = () => { const u = navigator.userAgent; const b = /Edg\//.test(u) ? 'Edge' : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : 'Browser'; const o = /Android/.test(u) ? 'Android' : /iPhone|iPad/.test(u) ? 'iOS' : /Windows/.test(u) ? 'Windows' : /Mac OS/.test(u) ? 'Mac' : /Linux/.test(u) ? 'Linux' : ''; return /TV|SMART-TV|AFTMM|Tizen|Web0S/i.test(u) ? 'TV browser' : `${b}${o ? ' on ' + o : ''}`; };
+const devName = () => { try { return localStorage.getItem('st_devname') || devGuess(); } catch { return devGuess(); } };
+S.devices = [];
+function castPopup(d) {
+  chime();
+  modal((close) => h('div', { class: 'mb' }, h('h3', null, '📲 Sent from ' + d.from), h('p', null, h('b', null, d.roomName || 'A room'), ' is ready to watch on this device.'),
+    h('div', { class: 'acts' }, h('button', { class: 'btn', onclick: () => { close(); go('/room/' + d.roomId); } }, '▶ Watch here'), h('button', { class: 'btn sec', onclick: close }, 'Not now'))));
+}
+function sendToDevice(roomId) {
+  const others = S.devices.filter((x) => x.id !== devId());
+  modal((close) => h('div', { class: 'mb' }, h('h3', null, '📲 Send to a device'),
+    h('p', { class: 'muted small' }, 'Pick one of YOUR devices that is signed in to this account. It opens this room and you can watch there (phone, tablet, TV browser, another PC).'),
+    others.length ? h('div', { class: 'list' }, others.map((x) => h('div', null, h('span', { class: 'g' }, x.name), h('button', { class: 'btn sm', onclick: guard(async () => { await api('POST', `/devices/${x.id}/cast`, { roomId, from: devName() }); toast('Sent to ' + x.name); close(); }) }, 'Send'))))
+      : h('p', null, 'No other device is online. Open ShowTime on your phone or TV and sign in with this same account, then it shows up here.')));
+}
+function devicesPanel() {
+  const list = h('div', { class: 'list' });
+  const draw = () => list.replaceChildren(...S.devices.map((x) => h('div', null, h('span', { class: 'g' }, x.name, x.id === devId() ? h('span', { class: 'chip' }, 'this device') : null), h('span', { class: 'muted small' }, 'online ' + fmtAgo(x.since)))));
+  const name = h('input', { value: devName(), maxlength: 40 });
+  api('GET', '/devices').then((d) => { S.devices = d; draw(); }).catch(() => {});
+  draw();
+  return h('div', { class: 'panel' }, h('h3', null, 'My devices'), h('p', { class: 'muted small' }, 'Sign in to ShowTime on any phone, tablet, TV or PC and stream your whole library there. Use "📲 Send to device" in a room to push what you are watching to another one. Only you can see this list.'), list,
+    h('div', { class: 'toolbar' }, name, h('button', { class: 'btn sec', onclick: guard(async () => { try { localStorage.setItem('st_devname', name.value.trim().slice(0, 40)); } catch { /* private mode */ } toast('Saved - reconnecting'); disconnectEvents(); connectEvents(); }) }, 'Rename this device')));
+}
+
 
 render();

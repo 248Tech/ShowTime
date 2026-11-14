@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-13
+
+### Added
+- **Auto-metadata on upload (Plex-style):** poster, synopsis, genres, score, cast & crew and the full season / episode guide are fetched in the background as soon as a file is imported (and for your existing library on boot). Placeholder titles like "Episode 3" are replaced with the real episode name. Keyless movie posters/synopsis via the iTunes Search API; movie cast photos with an optional TMDB key.
+- **Redesigned library & details:** poster grid with score badges, TV episodes grouped into show cards, a hero details view (poster, facts, synopsis), season tabs and an episode list with stills, air date, runtime and summary, and the episode's own info on its details page.
+- **Cast & crew:** Plex-style floating headshots, summary, genres and score in show, movie and free-movie details (TVMaze for TV, TMDB for movies with an optional free key). Only the title is sent upstream; photos are cached and relayed by the server through a host-allow-listed image proxy. Admins can switch lookups off.
+- **Global ratings:** 1-5 stars shared across the whole server, keyed by title (not file owner); only the average and count are public, never who voted. Shown on cards, details and in the room.
+- **DVR:** record any live channel now or scheduled (up to 4 h, 2 at once, 10 pending per user). ffmpeg reads through a key-protected loopback relay in front of the SSRF-guarded proxy; the result is remuxed to MP4 and saved into the owner's encrypted library.
+- **Free movies:** public-domain / Creative-Commons feature films from the Internet Archive, relayed with Range support so seeking works.
+- **Send to device:** per-account device list (never visible to anyone else) and one-tap send of a room to another signed-in device.
+- **Live TV:** prefetch/buffer system for smoother playback; change-channel, previous-channel and channel-picker controls.
+- Test suite `features` (metadata, ratings, free movies, devices, DVR).
+
 ## [0.1.0] - 2026-11-13
 
 First public release (beta).

@@ -75,7 +75,13 @@ shows.forEach(([show, season, eps, secs], si) => eps.forEach((t, i) => mk(`${sho
 mk('city-timelapse', { title: 'City Timelapse', kind: 'video', secs: 240, sub: 'Timelapse', w: 3840, h: 2160, br: 18e6, av1: false, subs: false, age: 2 });
 mk('ocean-drone', { title: 'Ocean Drone Flight', kind: 'video', secs: 410, sub: 'Drone footage', av1: true, subs: false, age: 6 });
 const mediaById = (id) => media.find((m) => m.id === id);
-const pubMedia = (m) => { const { _poster, ...rest } = m; return rest; };
+const slug = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const demoImg = (k) => '/api/img?u=' + encodeURIComponent('demo:' + k);
+const pubMedia = (m) => {
+  const { _poster, ...rest } = m;
+  const t = m.kind === 'tv' || m.kind === 'movie';
+  return { ...rest, rkey: m.kind === 'tv' ? 'show:' + slug(m.show) : m.kind === 'movie' ? 'movie:' + slug(m.title) + (m.year ? ':' + m.year : '') : 'video:' + m.id, ...(t ? { poster: demoImg(m.show || m.title), score: 6.5 + (slug(m.show || m.title).length % 25) / 10 } : {}) };
+};
 
 // ---------------------------------------------------------------- live TV (fictional channels)
 const COUNTRIES = ['us', 'gb', 'fr', 'de', 'jp', 'br', 'in', 'au', 'ca', 'es', 'it', 'mx'];
@@ -133,6 +139,17 @@ function roomCmd(r, b) {
     case 'jump': if (!(b.index >= 0 && b.index < s.queue.length)) throw new HttpError(400, 'bad index'); setItem(b.index); break;
     case 'ended': if (b.index !== s.index) return; if (s.index + 1 < s.queue.length) setItem(s.index + 1); else { s.playing = false; s.pos = 0; s.at = now; } break;
     case 'add': { if (!mediaById(b.mediaId)) throw new HttpError(404, 'Media not found'); s.queue.push(b.mediaId); if (s.index < 0) setItem(s.queue.length - 1); break; }
+    case 'tune': {
+      const curId = String(s.queue[s.index] || ''), curChan = curId.startsWith('iptv:') ? curId.slice(5) : null;
+      const sorted = [...channels].sort((x, y) => x.name.localeCompare(y.name));
+      let target = b.recall ? (r.lastChan || null) : b.id ? String(b.id) : null;
+      if (!target && b.dir) { const at = sorted.findIndex((c) => c.id === curChan); target = sorted[at < 0 ? 0 : (at + (b.dir > 0 ? 1 : -1) + sorted.length) % sorted.length].id; }
+      if (!target) throw new HttpError(409, 'No previous channel yet');
+      if (!chanById(target)) throw new HttpError(404, 'Channel not found');
+      if (target === curChan) break;
+      if (curChan) { s.queue[s.index] = 'iptv:' + target; r.lastChan = curChan; setItem(s.index); } else { s.queue.push('iptv:' + target); setItem(s.queue.length - 1); }
+      break;
+    }
     case 'addIptv': { if (!chanById(b.id)) throw new HttpError(404, 'Channel not found'); s.queue.push('iptv:' + b.id); if (s.index < 0) setItem(s.queue.length - 1); break; }
     case 'remove': { const i = b.index; if (!(i >= 0 && i < s.queue.length)) throw new HttpError(400, 'bad index'); s.queue.splice(i, 1); if (i < s.index) s.index--; else if (i === s.index) { if (!s.queue.length) { s.index = -1; s.playing = false; s.pos = 0; } else { s.index = Math.min(i, s.queue.length - 1); s.pos = 0; } s.at = now; } break; }
     case 'move': { const cur = s.queue[s.index]; const [x] = s.queue.splice(b.from, 1); s.queue.splice(b.to, 0, x); if (cur) s.index = s.queue.indexOf(cur); break; }
@@ -269,7 +286,7 @@ const CODECS = [
   { id: 'h264', label: 'H.264', encoders: ['libx264', 'h264_nvenc'], available: true, note: 'Plays everywhere; the compatibility baseline.', experimental: false },
   { id: 'av2', label: 'AV2', encoders: [], available: false, note: 'Spec released 2026, but FFmpeg and browsers have no AV2 support yet - slot is ready for when they do.', experimental: true },
 ];
-const adminInfo = () => ({ users: [{ id: 1, username: 'demo', email: 'demo@example.com', name: ME.name, is_admin: 1, created_at: NOW - 120 * DAY, watch_seconds: DM.seconds }, { id: 2, username: 'maya', email: 'maya@example.com', name: 'Maya Chen', is_admin: 0, created_at: NOW - 100 * DAY, watch_seconds: 61 * 3600 }, { id: 3, username: 'leo', email: 'leo@example.com', name: 'Leo Park', is_admin: 0, created_at: NOW - 90 * DAY, watch_seconds: 28 * 3600 }], mediaDirs: [], ffmpeg: true, mailEnabled: false, openSignup: false, encode: { auto: true, budgetX: 2, codecs: CODECS }, iptv: iptvFacets(), invites: [] });
+const adminInfo = () => ({ users: [{ id: 1, username: 'demo', email: 'demo@example.com', name: ME.name, is_admin: 1, created_at: NOW - 120 * DAY, watch_seconds: DM.seconds }, { id: 2, username: 'maya', email: 'maya@example.com', name: 'Maya Chen', is_admin: 0, created_at: NOW - 100 * DAY, watch_seconds: 61 * 3600 }, { id: 3, username: 'leo', email: 'leo@example.com', name: 'Leo Park', is_admin: 0, created_at: NOW - 90 * DAY, watch_seconds: 28 * 3600 }], mediaDirs: [], ffmpeg: true, mailEnabled: false, openSignup: false, encode: { auto: true, budgetX: 2, codecs: CODECS }, iptv: iptvFacets(), invites: [], meta: { enabled: true, tmdb: false }, free: { total: 0 }, dvr: { active: 0 } });
 
 // ---------------------------------------------------------------- router
 const R = [];
@@ -284,6 +301,29 @@ route('POST', /^\/media\/([^/]+)\/share$/, ([id], q, b) => { const m = mediaById
 route('POST', /^\/media\/([^/]+)\/(analyze|encode|convert|subs\/extract)$/, () => { throw new HttpError(403, 'Encoding runs on the real server - install ShowTime to scan and encode your own files'); });
 route('DELETE', /^\/media\/([^/]+)\/renditions\/(.+)$/, ([id, rid]) => { const m = mediaById(id); if (m) m.renditions = m.renditions.filter((r) => r.id !== rid); return ok; });
 route('DELETE', /^\/subs\/(.+)$/, ([sid]) => { for (const m of media) m.subs = m.subs.filter((s) => s.id !== sid); return ok; });
+// ---- Plex-style metadata, ratings, free movies, DVR, devices (canned data; the real server fetches these from TVMaze / TMDB / the Internet Archive)
+const PEOPLE = ['Ada Marlow', 'Ben Okafor', 'Cleo Sandoval', 'Dev Anand', 'Elsa Brandt', 'Finn Duarte', 'Gia Rossi', 'Hugo Lindqvist', 'Iris Kapoor', 'Jonas Weiss'];
+const ROLES = ['Captain Reyes', 'Dr. Vale', 'Mara', 'The Stranger', 'Officer Kim', 'Old Tom', 'Nadia', 'Professor Quill', 'Sam', 'Lucia'];
+const GENRES = { 'Sci-Fi': ['Sci-Fi', 'Adventure'], Documentary: ['Documentary', 'Nature'], Drama: ['Drama'], Comedy: ['Comedy'], Mystery: ['Mystery', 'Thriller'], 'Crime · Thriller': ['Crime', 'Thriller'] };
+const rate = {}; // key -> { sum, n, mine }
+const ratingsOut = () => Object.fromEntries(Object.entries(rate).filter(([, r]) => r.n).map(([k, r]) => [k, { avg: r.sum / r.n, n: r.n, mine: r.mine || 0 }]));
+route('GET', /^\/ratings$/, () => ratingsOut());
+route('PUT', /^\/ratings$/, (p, q, b) => { const r = rate[b.key] ||= { sum: 0, n: 0, mine: 0 }; r.sum -= r.mine; if (r.mine) r.n--; r.mine = Math.max(0, Math.min(5, +b.stars | 0)); if (r.mine) { r.sum += r.mine; r.n++; } return { avg: r.n ? r.sum / r.n : 0, n: r.n, mine: r.mine }; });
+route('GET', /^\/meta$/, (p, q) => {
+  const kind = q.get('kind'), title = q.get('title');
+  const m = media.find((x) => (kind === 'tv' ? x.kind === 'tv' && x.show === title : x.kind === 'movie' && x.title === title));
+  if (!m) return { found: false };
+  const seed = slug(title).length;
+  const cast = Array.from({ length: 8 }, (_, i) => ({ name: PEOPLE[(seed + i) % PEOPLE.length], role: ROLES[(seed * 3 + i) % ROLES.length], img: demoImg('face:' + PEOPLE[(seed + i) % PEOPLE.length]) }));
+  const eps = media.filter((x) => x.kind === 'tv' && x.show === title).sort((a, b) => a.episode - b.episode).map((e) => ({ s: e.season, n: e.episode, name: e.title, summary: 'In "' + e.title + '", old loyalties are tested and a secret comes to light. (Demo text - the real app pulls the actual episode guide.)', img: demoImg(e.title), air: new Date(NOW - (90 - e.episode * 7) * DAY).toISOString().slice(0, 10), runtime: Math.round(e.duration / 60), score: 7 + (e.episode % 3) / 2 }));
+  return { found: true, source: 'demo data', title, year: m.year || 2020, summary: kind === 'tv' ? title + ' follows a close-knit crew through one impossible season. Sample synopsis for the live demo - the real app fetches this from TVMaze / TMDB.' : title + ' is a sample film in the live demo. The real app fills in the true synopsis, cast and crew automatically when you upload a file.',
+    genres: GENRES[m.sub] || ['Drama'], network: kind === 'tv' ? 'ShowTime' : null, status: kind === 'tv' ? 'Running' : null, score: 6.5 + (slug(title).length % 25) / 10, poster: demoImg(title), cast, crew: [{ name: 'Rowan Hale', role: kind === 'tv' ? 'Creator' : 'Director', img: demoImg('face:Rowan Hale') }, { name: 'Mina Cho', role: 'Writer', img: demoImg('face:Mina Cho') }], episodes: eps };
+});
+route('GET', /^\/free$/, () => ({ items: [], total: 0, pages: 1, page: 1 }));
+route('GET', /^\/dvr$/, () => []);
+route('POST', /^\/dvr$/, () => { throw new HttpError(403, 'DVR records on your own server - install ShowTime to use it'); });
+route('GET', /^\/devices$/, () => []);
+route('POST', /^\/admin\/free\/refresh$/, () => ({ ok: true }));
 route('GET', /^\/groups$/, () => groups);
 route('POST', /^\/groups$/, (p, q, b) => { const id = Math.max(0, ...groups.map((g) => g.id)) + 1; groups.push({ id, name: String(b.name || 'New group').slice(0, 60), owned: true, members: [{ id: 1, name: ME.name, username: ME.username, friend: false, avatar: null }] }); return { id }; });
 route('POST', /^\/groups\/(\d+)\/members$/, ([gid], q, b) => { const g = groups.find((x) => x.id === +gid); const f = friends.find((x) => x.id === +b.userId); if (!g || !f) throw new HttpError(403, 'You can only add people from your friends list'); if (!g.members.some((m) => m.id === f.id)) g.members.push({ id: f.id, name: f.name, username: f.username, friend: true, avatar: null }); return ok; });
@@ -380,6 +420,8 @@ function rewrite(u) {
   if ((m = /^\/media\/([^/]+)\/stream\?r=([^&]*)/.exec(p))) { const r = mediaById(m[1])?.renditions.find((x) => x.id === decodeURIComponent(m[2])); return clipUrl(r?.codec === 'av1' ? 'av1' : r?.codec === 'vp9' ? 'vp9' : 'h264'); }
   if (/^\/media\/[^/]+\/stream/.test(p)) return clipUrl('h264');
   if ((m = /^\/subs\/(es|en)-/.exec(p))) return vtt(m[1]);
+  if ((m = /^\/img\?u=demo%3Aface%3A(.+)$/.exec(p))) { const n = decodeURIComponent(m[1]); let hh = 0; for (const c of n) hh = (hh * 31 + c.charCodeAt(0)) % 360; return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="hsl(' + hh + ',35%,32%)"/><text x="5" y="6.9" font-size="4.6" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="700">' + n.split(' ').map((x) => x[0]).join('') + '</text></svg>'); }
+  if ((m = /^\/img\?u=demo%3A(.+)$/.exec(p))) return poster(decodeURIComponent(m[1]));
   if ((m = /^\/iptv\/logo\/(.+)$/.exec(p))) return logo(chanById(m[1])?.name || 'TV');
   if (/^\/iptv\/[^/]+\/stream\.m3u8/.test(p)) return clipUrl('h264');
   if (/^\/avatars\//.test(p)) return svgUrl('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#555"/></svg>');

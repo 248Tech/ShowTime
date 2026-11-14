@@ -28,8 +28,10 @@ try {
   await save('home');
 
   await page.click('nav.top a:has-text("Library")'); await page.waitForSelector('.grid .card'); await save('library');
+  await page.click('button.chip:has-text("TV Shows"), button:has-text("TV Shows")'); await page.click('.card:has-text("Space Saga")'); await page.waitForSelector('.ep'); await page.waitForSelector('.head img'); await sleep(500); await save('details', { wait: 500 });
+  await page.click('.modal .x'); await page.click('button:has-text("All")');
 
-  await page.click('.grid .card >> nth=0'); await page.waitForSelector('text=Video versions'); await page.click('summary:has-text("Codec scan report")');
+  await page.click('.card:has-text("Neon Heist")'); await page.waitForSelector('text=Video versions'); await page.click('summary:has-text("Codec scan report")');
   await sleep(500); await page.evaluate(() => document.querySelector('.modalbg').scrollTo(0, 420)); await save('codecs', { wait: 400 });
   await page.click('.modal .x');
 

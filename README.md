@@ -38,6 +38,10 @@ A lightweight, **self-hosted watch-party server**. Sync movies, shows and live T
 | ⚡ **Smart AV1 / VP9 / H.264** | A quick scan trial-encodes your file *on your machine* and produces only the versions worth having. Each viewer's player picks the best one for its device and can switch live. |
 | 💬 **End-to-end encrypted chat** | mIRC-style. Keys are derived from a passphrase in the browser (PBKDF2 → AES-256-GCM). The server only sees ciphertext, keeps it in RAM, and **wipes everything every 48 hours**. |
 | 📺 **Live TV** | Browse thousands of publicly available channels from the community [iptv-org](https://github.com/iptv-org/iptv) index, with health checks, frozen-feed detection and a hardened, SSRF-safe HLS proxy. |
+| 🎭 **Auto-metadata, cast & ratings** | Upload a file and ShowTime fetches the poster, synopsis, score, cast & crew headshots and the full season / episode guide on its own (TVMaze for TV, iTunes for movie posters, TMDB with an optional free key for movie cast). Episode names replace `Episode 3` placeholders. Plus a server-wide 1–5★ rating shared by everyone on your ShowTime. Only the title leaves your server. |
+| ⏺ **DVR** | Record any live channel now or on a schedule; recordings are saved into your own encrypted library, private to you. |
+| 🎞 **Free movies** | Public-domain and Creative-Commons feature films from the Internet Archive, streamed through your server, nothing stored. |
+| 📲 **Send to device** | Sign in on a phone, tablet or TV browser and push the current room to it. Your library follows you to every device on your account. |
 | 💬 **Subtitles** | Embedded and sidecar tracks are found automatically and stored as encrypted WebVTT. Upload your own, or share subtitles live with your room, peer-to-peer. |
 | 🏆 **Profiles & badges** | Watch time, recently watched, what you watch, and 30 bronze-to-platinum achievements. Private unless you choose to share with friends. |
 | 🧩 **Tiny & hackable** | Plain Node.js, built-in SQLite, vanilla JS front-end. **One** runtime dependency ([nodemailer](https://nodemailer.com/)). 6 automated test suites. |
@@ -52,7 +56,8 @@ A lightweight, **self-hosted watch-party server**. Sync movies, shows and live T
 | <img src="site/assets/screens/codecs.jpg" alt="Codec scan report"><br><sub>Codec scan report</sub> | <img src="site/assets/screens/chat.jpg" alt="Encrypted chat"><br><sub>End-to-end encrypted chat</sub> |
 | <img src="site/assets/screens/livetv.jpg" alt="Live TV"><br><sub>Live TV directory</sub> | <img src="site/assets/screens/friends.jpg" alt="Friends"><br><sub>Friend codes & anonymous requests</sub> |
 | <img src="site/assets/screens/badges.jpg" alt="Badges"><br><sub>Achievements</sub> | <img src="site/assets/screens/stats.jpg" alt="Stats"><br><sub>Watch-time stats</sub> |
-| <img src="site/assets/screens/groups.jpg" alt="Groups"><br><sub>Aliases for non-friends</sub> | <img src="site/assets/screens/mobile.jpg" alt="Mobile" width="180"><br><sub>Mobile</sub> |
+| <img src="site/assets/screens/details.jpg" alt="Show details"><br><sub>Plex-style details: poster, cast &amp; crew, episode guide</sub> | <img src="site/assets/screens/groups.jpg" alt="Groups"><br><sub>Aliases for non-friends</sub> |
+| <img src="site/assets/screens/mobile.jpg" alt="Mobile" width="180"><br><sub>Mobile</sub> | |
 
 </details>
 
@@ -124,6 +129,9 @@ Copy [`.env.example`](.env.example) to `.env`. Everything is optional.
 | `TLS_CERT` / `TLS_KEY` | – | Serve HTTPS directly. Or run behind a proxy and set `TRUST_PROXY=1`. |
 | `ENCODE_AUTO` / `ENCODE_BUDGET_X` | `1` / `2` | Auto codec scan + background encodes; max encode time as a multiple of runtime. |
 | `IPTV_AUTO` / `IPTV_SOURCE_URL` | `1` / iptv-org | Auto-import & health-check the live TV list; use your own M3U instead. |
+| `TMDB_API_KEY` | – | Optional free [TMDB](https://www.themoviedb.org/settings/api) key: cast photos for movies (TV works without). Can also be set in Admin. |
+| `DVR_MAX_GB` | `8` | Size cap for one recording. |
+| `FREE_AUTO` | `1` | Fetch the free-movie catalogue (Internet Archive) on first start and weekly. |
 | `ICE_SERVERS` | Google STUN | JSON list of STUN/TURN servers for peer-to-peer local-file streaming. |
 | `CHAT_WIPE_MS` | 48 h | Chat wipe interval (mainly for testing). |
 | `AV2_ENCODER` | – | An FFmpeg AV2 encoder name, once one exists. |
@@ -152,7 +160,7 @@ Found a vulnerability? Please read **[SECURITY.md](SECURITY.md)** and report it 
 
 ```bash
 npm install
-npm test            # 6 suites: SSRF, codec decisions, achievements, IPTV self-healing, API/privacy/crypto/codecs, encrypted chat
+npm test            # 7 suites: SSRF, codec decisions, achievements, IPTV self-healing, API/privacy/crypto/codecs, encrypted chat, cast/ratings/DVR/free movies/devices
 npm run demo        # static live demo with an in-browser mock backend
 ```
 

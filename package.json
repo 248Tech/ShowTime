@@ -1,6 +1,6 @@
 {
   "name": "showtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Self-hosted watch-party server: synced rooms, encrypted library, AV1/VP9 smart encoding, friends-only privacy and end-to-end encrypted chat.",
   "type": "module",
   "private": true,
@@ -33,7 +33,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node test/ssrf.mjs && node test/codec.mjs && node test/achievements.mjs && node test/iptv-heal.mjs && node test/smoke.mjs && node test/chat.mjs",
+    "test": "node test/ssrf.mjs && node test/codec.mjs && node test/achievements.mjs && node test/iptv-heal.mjs && node test/smoke.mjs && node test/chat.mjs && node test/features.mjs",
     "build:site": "node scripts/build-site.mjs",
     "demo": "node scripts/build-site.mjs --serve"
   },

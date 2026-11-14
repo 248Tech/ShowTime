@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'st-heal-'));
 const PORT = 18095, UP = 18096, B = `http://127.0.0.1:${PORT}`, UPB = `http://127.0.0.1:${UP}`;
-let session = 0, masterHits = 0, liveSeq = 0;
+let session = 0, masterHits = 0, liveSeq = 0, segHits = 0;
 const seg = Buffer.alloc(188 * 20, 0x47);
 const send = (res, code, type, body) => { res.writeHead(code, { 'Content-Type': type }); res.end(body); };
 const upstream = http.createServer((req, res) => {
@@ -17,9 +17,9 @@ const upstream = http.createServer((req, res) => {
   if (u.pathname.startsWith('/frozen/old')) return send(res, 200, 'video/mp2t', seg);
   if (u.pathname === '/sess/master.m3u8') { masterHits++; session++; return send(res, 200, 'application/vnd.apple.mpegurl', `#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",LANGUAGE="en",URI="a/en.m3u8?s=${session}"\n#EXT-X-STREAM-INF:BANDWIDTH=500000,AUDIO="aud"\nv/low.m3u8?s=${session}\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,AUDIO="aud"\nv/high.m3u8?s=${session}\n`); }
   if (u.pathname === '/expire') { session++; return send(res, 200, 'text/plain', 'expired'); }
-  if (u.pathname === '/stats') return send(res, 200, 'application/json', JSON.stringify({ masterHits, session }));
+  if (u.pathname === '/stats') return send(res, 200, 'application/json', JSON.stringify({ masterHits, session, segHits }));
   if (/^\/sess\/(v|a)\/\w+\.m3u8$/.test(u.pathname)) return s === session ? send(res, 200, 'application/vnd.apple.mpegurl', `#EXTM3U\n#EXT-X-TARGETDURATION:4\n#EXT-X-MEDIA-SEQUENCE:${liveSeq++}\n#EXTINF:4,\nseg0.ts?s=${s}\n`) : send(res, 404, 'text/plain', 'session expired');
-  if (u.pathname === '/sess/v/seg0.ts' || u.pathname === '/sess/a/seg0.ts') return s === session ? send(res, 200, 'video/mp2t', seg) : send(res, 404, 'text/plain', 'expired');
+  if (u.pathname === '/sess/v/seg0.ts' || u.pathname === '/sess/a/seg0.ts') { segHits++; } if (u.pathname === '/sess/v/seg0.ts' || u.pathname === '/sess/a/seg0.ts') return s === session ? send(res, 200, 'video/mp2t', seg) : send(res, 404, 'text/plain', 'expired');
   send(res, 404, 'text/plain', 'nope');
 });
 await new Promise((r) => upstream.listen(UP, '127.0.0.1', r));
@@ -52,6 +52,9 @@ try {
   assert.equal((await hit(audio)).status, 200, 'audio rendition plays while the session is fresh');
   const media1 = await (await hit(high)).text(); const seg1 = media1.split('\n').find((l) => l.startsWith('/api/iptv/p/'));
   assert.equal((await hit(seg1)).status, 200);
+  const segsBefore = (await up('/stats')).segHits;
+  for (let i = 0; i < 3; i++) assert.equal((await hit(seg1)).status, 200); // like 3 more viewers of the same channel
+  assert.equal((await up('/stats')).segHits, segsBefore, 'repeat segment requests are served from the prefetch cache (provider is hit once)');
 
   // --- provider session expires ---
   await fetch(UPB + '/expire');
@@ -65,7 +68,8 @@ try {
   const mid = (await up('/stats')).masterHits;
   assert.equal((await hit(high)).status, 200); assert.equal((await hit(high)).status, 200);
   assert.equal((await up('/stats')).masterHits, mid, 'later reloads reuse the healed URL (no master hammering)');
-  assert.equal((await hit(seg1)).status, 404, 'a stale SEGMENT url is not healed (segments come from the fresh playlist)');
+  // seg1 was prefetched into the RAM cache while its session was valid, so it is still served; segments are never "healed" upstream, only cached
+  assert.equal((await hit(seg1)).status, 200, 'a segment prefetched while valid is still served from the cache');
   // --- expires again and again ---
   for (let i = 0; i < 3; i++) { await fetch(UPB + '/expire'); assert.equal((await hit(high)).status, 200, 'heals repeatedly (round ' + (i + 1) + ')'); }
   // the OTHER variant resolves to its own URL, not the high one
